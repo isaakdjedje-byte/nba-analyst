@@ -101,6 +101,16 @@ jobs:
         env:
           CI: true
 
+      - name: Install wait-on
+        run: npm install -g wait-on
+
+      - name: Start server in background
+        run: |
+          npm run start &
+          npx wait-on http://localhost:3000 --timeout 60000
+        env:
+          CI: true
+
       - name: Run tests (shard ${{ matrix.shard }}/4)
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
         env:
