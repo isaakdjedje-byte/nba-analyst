@@ -1,0 +1,52 @@
+{
+  "name": "nba-analyst",
+  "version": "0.1.0",
+  "description": "NBA Analyst - AI-powered sports betting decision platform",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:e2e",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ci": "playwright test --ci",
+    "test:report": "playwright show-report",
+    "test:install": "playwright install",
+    "test:install-deps": "playwright install-deps"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@prisma/client": "^5.22.0",
+    "next-auth": "^4.24.13",
+    "zod": "^3.24.0",
+    "pino": "^9.6.0",
+    "@tanstack/react-query": "^5.66.0",
+    "redis": "^4.7.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@seontechnologies/playwright-utils": "latest",
+    "@faker-js/faker": "^9.5.0",
+    "@types/node": "^20.17.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.20.0",
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.5.0",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
