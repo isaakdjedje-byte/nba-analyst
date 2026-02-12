@@ -77,10 +77,12 @@ export default defineConfig({
 
   // Run local dev server before starting tests
   webServer: {
-    command: 'npm run dev',
+    command: process.env.CI ? 'npm run start' : 'npm run dev',
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120000,
+    timeout: 180000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 
   // Output directory for test artifacts

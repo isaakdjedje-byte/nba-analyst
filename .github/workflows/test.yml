@@ -96,8 +96,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Build Next.js app
+        run: npm run build
+        env:
+          CI: true
+
       - name: Run tests (shard ${{ matrix.shard }}/4)
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+        env:
+          CI: true
+          BASE_URL: http://localhost:3000
 
       - name: Upload test results
         if: failure()
