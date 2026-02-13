@@ -131,3 +131,5 @@ test.describe('Policy Evaluation - Confidence & Edge Gates @p1 @api @policy @edg
     expect(response.status()).toBe(200);
     const result = await response.json();
     expect(result.gates.driftGate).toBe('passed');
+  });
+});

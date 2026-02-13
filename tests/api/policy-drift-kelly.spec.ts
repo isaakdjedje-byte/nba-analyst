@@ -9,7 +9,7 @@
 import { test, expect } from '../support/merged-fixtures';
 import { createDecision, createHardStopDecision, createNoBetDecision } from '../support/factories';
 
-  });
+test.describe('Policy Evaluation - Drift & Kelly Gates @p1 @api @policy @edge-cases', () => {
 
   test('[P1] should handle undefined drift value', async ({ request }) => {
     // Given model outputs without drift
