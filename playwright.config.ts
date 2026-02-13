@@ -1,10 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
-import dotenv from 'dotenv';
 import path from 'path';
 
-// Load test environment
-const envPath = path.resolve(__dirname, '.env.test');
-dotenv.config({ path: envPath });
+// Load test environment (optional - dotenv may not be available in CI)
+try {
+  const dotenv = require('dotenv');
+  dotenv.config({ path: path.resolve(__dirname, '.env.test') });
+} catch {
+  // dotenv not available, continue without it
+}
+
+// Alternative: Use dynamic import for ESM compatibility
+// import dotenv from 'dotenv';
+// dotenv.config({ path: path.resolve(__dirname, '.env.test') });
 
 export default defineConfig({
   testDir: './tests',
