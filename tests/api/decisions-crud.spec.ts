@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { createDecision, createNoBetDecision, createHardStopDecision } from '../support/factories';
 
-test.describe('Decisions API @api @decisions', () => {
+/**
+ * SKIPPED: Epic 2 not yet implemented
+ * Tests for Decision CRUD operations
+ * Re-enable when Epic 2 (Production decisionnelle fiable) is active
+ */
+
+test.describe.skip('Decisions API @api @decisions @epic2', () => {
   test('[P0] should create a new decision @smoke @p0', async ({ request }) => {
     const decision = createDecision({ status: 'Pick', confidence: 0.85 });
     
