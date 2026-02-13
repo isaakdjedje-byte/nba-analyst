@@ -21,6 +21,9 @@ test.describe('Home Page - P1 @p1 @e2e @home @navigation', () => {
   test('[P0] should navigate to dashboard from home', async ({ page }) => {
     // Given the user is on the home page
     await page.goto('/');
+    
+    // Wait for navigation to be ready
+    await page.waitForSelector('[data-testid="nav-dashboard"]', { timeout: 10000 });
 
     // When clicking the dashboard link
     await page.getByTestId('nav-dashboard').click();
@@ -33,6 +36,9 @@ test.describe('Home Page - P1 @p1 @e2e @home @navigation', () => {
   test('[P1] should display navigation menu', async ({ page }) => {
     // Given the user is on the home page
     await page.goto('/');
+    
+    // Wait for navigation to be ready
+    await page.waitForSelector('[data-testid="main-navigation"]', { timeout: 10000 });
 
     // Then navigation elements should be visible
     await expect(page.getByTestId('main-navigation')).toBeVisible();
