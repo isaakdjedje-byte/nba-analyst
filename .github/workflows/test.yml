@@ -97,6 +97,11 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Build application
+        run: npm run build
+        env:
+          CI: true
+
       - name: Run Playwright tests (shard ${{ matrix.shard }}/4)
         run: npx playwright test --shard=${{ matrix.shard }}/4
         env:
