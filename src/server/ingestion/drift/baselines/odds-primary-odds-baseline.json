@@ -1,0 +1,78 @@
+{
+  "id": "odds-primary-odds-baseline",
+  "provider": "odds-primary",
+  "schemaName": "odds",
+  "version": "1.0.0",
+  "createdAt": "2026-02-13T00:00:00.000Z",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "sportKey",
+      "type": "string",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "sportTitle",
+      "type": "string",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "commenceTime",
+      "type": "date",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "homeTeam",
+      "type": "string",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "awayTeam",
+      "type": "string",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "bookmakers",
+      "type": "array",
+      "required": true,
+      "nullable": false,
+      "nested": [
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "lastUpdate",
+          "type": "date",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "markets",
+          "type": "array",
+          "required": true,
+          "nullable": false
+        }
+      ]
+    }
+  ],
+  "hash": "def456"
+}

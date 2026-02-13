@@ -1,0 +1,72 @@
+{
+  "id": "nba-cdn-schedule-baseline",
+  "provider": "nba-cdn",
+  "schemaName": "schedule",
+  "version": "1.0.0",
+  "createdAt": "2026-02-13T00:00:00.000Z",
+  "fields": [
+    {
+      "name": "date",
+      "type": "string",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "name": "games",
+      "type": "array",
+      "required": true,
+      "nullable": false,
+      "nested": [
+        {
+          "name": "id",
+          "type": "number",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "season",
+          "type": "number",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "seasonType",
+          "type": "string",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "homeTeam",
+          "type": "object",
+          "required": true,
+          "nullable": false
+        },
+        {
+          "name": "awayTeam",
+          "type": "object",
+          "required": true,
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "count",
+      "type": "number",
+      "required": true,
+      "nullable": false
+    }
+  ],
+  "hash": "abc123"
+}
