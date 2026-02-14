@@ -6,4 +6,5 @@
 export { DecisionCard } from './DecisionCard';
 export { DecisionCardSkeleton, DecisionListSkeleton } from './DecisionCardSkeleton';
 export { DecisionList, DecisionStatusFilter } from './DecisionList';
+export { RationalePanel, GateIndicator } from './RationalePanel';
 export { StatusBadge } from './StatusBadge';
