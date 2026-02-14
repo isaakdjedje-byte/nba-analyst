@@ -44,6 +44,71 @@ const HARDSTOP_STATUS_SCHEMA = {
   limitsFields: ['dailyLossLimit', 'consecutiveLosses', 'bankrollPercent'],
 };
 
+// Type definitions for API responses
+interface HardStopState {
+  dailyLoss: number;
+  consecutiveLosses: number;
+  bankrollPercent: number;
+}
+
+interface HardStopLimits {
+  dailyLossLimit: number;
+  consecutiveLosses: number;
+  bankrollPercent: number;
+}
+
+interface HardStopStatusData {
+  isActive: boolean;
+  triggeredAt?: string;
+  triggerReason?: string;
+  currentState: HardStopState;
+  limits: HardStopLimits;
+  recommendedAction: string;
+}
+
+interface ApiMeta {
+  timestamp: string;
+  traceId?: string;
+}
+
+interface HardStopStatusResponse {
+  data: HardStopStatusData;
+  meta: ApiMeta;
+}
+
+interface HardStopResetData {
+  reset: boolean;
+  previousState?: HardStopStatusData;
+  resetAt?: string;
+  resetBy?: string;
+  message?: string;
+}
+
+interface HardStopResetResponse {
+  data: HardStopResetData;
+  meta: ApiMeta;
+}
+
+interface ApiErrorResponse {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  meta: ApiMeta;
+}
+
+interface Decision {
+  status: 'PICK' | 'NO_BET' | 'HARD_STOP';
+  id?: string;
+}
+
+interface DailyRunResponse {
+  data?: {
+    decisions?: Decision[];
+  };
+}
+
 // ============================================
 // TEST SUITE: Hard-Stop API E2E
 // ============================================
@@ -86,7 +151,7 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
       expect(body).toHaveProperty('meta');
 
       // 4. Verify: Data structure contains required fields
-      const data = body.data;
+      const data = body.data as HardStopStatusData;
       HARDSTOP_STATUS_SCHEMA.dataFields.forEach((field: string) => {
         expect(data).toHaveProperty(field);
       });
@@ -100,6 +165,11 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
       HARDSTOP_STATUS_SCHEMA.limitsFields.forEach((field: string) => {
         expect(data.limits).toHaveProperty(field);
       });
+
+      // 7. Verify: Response types match expected interface
+      expect(typeof data.isActive).toBe('boolean');
+      expect(typeof data.currentState.dailyLoss).toBe('number');
+      expect(typeof data.recommendedAction).toBe('string');
 
       // 7. Verify: Meta contains timestamp
       expect(body.meta).toHaveProperty('timestamp');
@@ -316,7 +386,8 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
         // If run proceeds, verify decisions are HARD_STOP
         const runBody = await runResponse.json();
         if (runBody.data?.decisions) {
-          const allHardStop = runBody.data.decisions.every((d: any) => d.status === 'HARD_STOP');
+          const decisions = runBody.data.decisions as Decision[];
+          const allHardStop = decisions.every((d) => d.status === 'HARD_STOP');
           // Either all are HARD_STOP or run was blocked
           expect([true, false]).toContain(allHardStop);
         }
@@ -340,7 +411,8 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
 
       // If there are decisions, they should not be PICK when hard-stop is active
       if (history.data && history.data.length > 0) {
-        const picks = history.data.filter((d: any) => d.status === 'PICK');
+        const decisions = history.data as Decision[];
+        const picks = decisions.filter((d) => d.status === 'PICK');
         expect(picks.length).toBe(0);
       }
     });
@@ -393,9 +465,10 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
       ]);
 
       // Verify: All responses return same state
-      const bodies = await Promise.all(responses.map(r => r.json()));
+      const jsonPromises = responses.map(async r => (await r.json()) as HardStopStatusResponse);
+      const bodies = await Promise.all(jsonPromises);
       const firstState = bodies[0].data.isActive;
-      bodies.forEach((body: any) => {
+      bodies.forEach((body) => {
         expect(body.data.isActive).toBe(firstState);
       });
     });
@@ -417,9 +490,10 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
       });
 
       // Verify: All responses are consistent
-      const bodies = await Promise.all(responses.map(r => r.json()));
+      const jsonPromises = responses.map(async r => (await r.json()) as HardStopStatusResponse);
+      const bodies = await Promise.all(jsonPromises);
       const firstIsActive = bodies[0].data.isActive;
-      bodies.forEach((body: any) => {
+      bodies.forEach((body) => {
         expect(body.data.isActive).toBe(firstIsActive);
       });
     });

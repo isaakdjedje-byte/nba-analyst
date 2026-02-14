@@ -1,8 +1,9 @@
 /**
  * E2E Test Helpers - Database
- * Test database setup and teardown for daily run pipeline E2E tests
+ * Test database setup and teardown for E2E tests
  *
- * Story: 2.10 - Implementer les tests E2E du pipeline daily run
+ * Story: 2.11 - Implementer les tests E2E de l'API Hard-Stop
+ * (Extended from Story 2.10 patterns)
  */
 
 import { PrismaClient } from '@prisma/client';
