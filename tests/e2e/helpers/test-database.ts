@@ -84,6 +84,7 @@ export async function clearTestData(prisma: PrismaClient): Promise<void> {
     'Match',
     'DailyRun',
     'DataIngestionLog',
+    'HardStopState',
   ];
 
   for (const table of tables) {
