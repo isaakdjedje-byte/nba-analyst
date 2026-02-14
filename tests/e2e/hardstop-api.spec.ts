@@ -15,6 +15,7 @@
 
 import { test, expect } from '../support/merged-fixtures';
 import { PrismaClient } from '@prisma/client';
+import { APIRequestContext, APIResponse } from '@playwright/test';
 import {
   setupTestEnvironment,
   teardownTestEnvironment,
@@ -25,7 +26,6 @@ import {
   activateHardStop,
   updateHardStopState,
 } from './helpers/hardstop-helpers';
-import { authenticateUserApi } from '../support/helpers/auth-helper';
 
 const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
 
@@ -644,6 +644,51 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
       }
     });
   });
+
+  // ============================================
+  // UI Integration Tests (Story 3.7 - GuardrailBanner)
+  // ============================================
+  // NOTE: These tests are placeholders pending Story 3.7 implementation
+  // They validate the contract between Hard-Stop API and GuardrailBanner component
+  test.describe.skip('UI Integration - GuardrailBanner @story-3.7', () => {
+    test.skip('[AC1] GuardrailBanner displays when hard-stop is active', async ({ page }) => {
+      // Setup: Navigate to dashboard and activate hard-stop
+      await page.goto(`${baseUrl}/dashboard`);
+      await activateHardStop(prisma, 'Test activation for UI');
+
+      // Refresh to trigger GuardrailBanner
+      await page.reload();
+
+      // Verify: GuardrailBanner is visible
+      const banner = page.locator('[data-testid="guardrail-banner"]').or(
+        page.locator('text=Hard-Stop Active')
+      );
+      await expect(banner).toBeVisible();
+
+      // Verify: Banner displays correct reason
+      await expect(page.locator('[data-testid="guardrail-reason"]')).toContainText('Test activation');
+    });
+
+    test.skip('[AC2] GuardrailBanner disappears after successful reset', async ({ page, request }) => {
+      // Setup: Activate hard-stop
+      await activateHardStop(prisma, 'Test for reset UI');
+      await page.goto(`${baseUrl}/dashboard`);
+      await page.reload();
+
+      // Verify: Banner is initially visible
+      const banner = page.locator('[data-testid="guardrail-banner"]');
+      await expect(banner).toBeVisible();
+
+      // Execute: Reset via API
+      await executeHardStopReset(request, baseUrl, 'Reset from UI test', 'ops', prisma);
+
+      // Refresh page
+      await page.reload();
+
+      // Verify: Banner is no longer visible
+      await expect(banner).not.toBeVisible();
+    });
+  });
 });
 
 // ============================================
@@ -655,12 +700,12 @@ test.describe('Hard-Stop API E2E @e2e @epic2 @hardstop', () => {
  * Creates/uses test user with specified role and authenticates via API
  */
 async function executeHardStopReset(
-  request: any,
+  request: APIRequestContext,
   baseUrl: string,
   reason: string,
   role: 'ops' | 'admin' | 'user',
   prisma: PrismaClient
-): Promise<any> {
+): Promise<APIResponse> {
   const userCreds = TEST_USERS[role];
   
   // Ensure test user exists with correct role
