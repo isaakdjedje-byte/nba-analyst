@@ -67,9 +67,9 @@ development_status:
   2-11-implementer-les-tests-e2e-de-l-api-hard-stop: done  # ✅ Code review completed, 4 issues fixed and committed 2026-02-14
 
   # Epic 3: Experience Picks/No-Bet explicable (mobile-first)
-  epic-3: backlog
-  3-1-creer-la-structure-dashboard-avec-navigation-picks-no-bet-performance-logs: backlog
-  3-2-implementer-la-vue-picks-avec-liste-des-decisions-du-jour: backlog
+  epic-3: in-progress  # 🔄 Story 3.1 completed, layout ready for dependent stories
+  3-1-creer-la-structure-dashboard-avec-navigation-picks-no-bet-performance-logs: done  # ✅ Dashboard layout with navigation implemented, build successful, E2E AC4 passing 2026-02-14
+  3-2-implementer-la-vue-picks-avec-liste-des-decisions-du-jour: done  # ✅ Code review completed, 8 issues fixed, all files committed 2026-02-14
   3-3-creer-le-composant-decisioncard-avec-statut-explicite: backlog
   3-4-implementer-le-rationalepanel-avec-justification-courte: backlog
   3-5-ajouter-le-panneau-de-details-extensible: backlog
