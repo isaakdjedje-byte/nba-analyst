@@ -64,7 +64,7 @@ development_status:
 
   # Epic 2 Preparation (for Epic 3 readiness)
   2-10-implementer-les-tests-e2e-du-pipeline-daily-run: done  # ✅ Code review completed, 12 issues fixed, all files committed 2026-02-14
-  2-11-implementer-les-tests-e2e-de-l-api-hard-stop: backlog  # Prep story - validate GuardrailBanner integration before Epic 3
+  2-11-implementer-les-tests-e2e-de-l-api-hard-stop: done  # ✅ Code review completed, 4 issues fixed and committed 2026-02-14
 
   # Epic 3: Experience Picks/No-Bet explicable (mobile-first)
   epic-3: backlog
