@@ -70,14 +70,14 @@ development_status:
   epic-3: in-progress  # 🔄 Story 3.1 completed, layout ready for dependent stories
   3-1-creer-la-structure-dashboard-avec-navigation-picks-no-bet-performance-logs: done  # ✅ Dashboard layout with navigation implemented, build successful, E2E AC4 passing 2026-02-14
   3-2-implementer-la-vue-picks-avec-liste-des-decisions-du-jour: done  # ✅ Code review completed, 8 issues fixed, all files committed 2026-02-14
-  3-3-creer-le-composant-decisioncard-avec-statut-explicite: backlog
-  3-4-implementer-le-rationalepanel-avec-justification-courte: backlog
-  3-5-ajouter-le-panneau-de-details-extensible: backlog
-  3-6-implementer-le-composant-statusbadge-avec-semantique-stricte: backlog
-  3-7-creer-le-composant-guardrailbanner-pour-etat-global: backlog
-  3-8-implementer-le-responsive-mobile-first-2-min-parcours: backlog
-  3-9-implementer-les-etats-ux-critiques-loading-empty-degraded-blocked: backlog
-  3-10-implementer-le-dark-mode-avec-coherence-semantique: backlog
+  3-3-creer-le-composant-decisioncard-avec-statut-explicite: done  # ✅ Code review completed, 4 issues fixed (responsive detection, keyboard nav, null-safety, docs) 2026-02-14
+  3-4-implementer-le-rationalepanel-avec-justification-courte: done  # ✅ Code review completed, 5 issues fixed (imports, exports, edge handling, test config). 2 action items added for jsdom env.
+  3-5-ajouter-le-panneau-de-details-extensible: done  # ✅ Code review completed: 4 HIGH/CRITICAL issues fixed (focus management, aria-live, E2E tests activation, clipboard error handling). Story status: done 2026-02-14
+  3-6-implementer-le-composant-statusbadge-avec-semantique-stricte: done  # ✅ Code review completed: 9 issues found, 8 fixed (CRITICAL: WCAG contrast, HIGH: dark mode classes, touch targets, data-testid). Status: done 2026-02-15
+  3-7-creer-le-composant-guardrailbanner-pour-etat-global: done  # ✅ Code review completed: 9 CRITICAL/HIGH/MEDIUM issues fixed (E2E tests unskipped, no-bet integration, old file removed), status: done 2026-02-15
+  3-8-implementer-le-responsive-mobile-first-2-min-parcours: done  # ✅ Code review completed 2026-02-15: Round 2 - 9 issues fixed (25 E2E tests unskipped, viewport maxScale=1.3, measureTTI improved)
+  3-9-implementer-les-etats-ux-critiques-loading-empty-degraded-blocked: done  # ✅ Code review completed, all fixes applied, 55 tests passing 2026-02-15
+  3-10-implementer-le-dark-mode-avec-coherence-semantique: in-progress  # 🔄 Code review: 2 HIGH + 2 MEDIUM issues fixed, needs git commit
   epic-3-retrospective: optional
 
   # Epic 4: Performance, logs et replay d'audit

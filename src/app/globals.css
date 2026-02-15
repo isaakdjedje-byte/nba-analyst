@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+/* Story 3.10: Smooth theme transitions (AC7) */
+/* Transition duration: 300ms for color, background-color, border-color */
+/* Applied to specific element types to avoid performance issues with html * { ... } */
+html {
+  transition: background-color 300ms ease-in-out, color 300ms ease-in-out;
+}
+
+/* Apply transitions to common elements that need theme switching */
+body,
+header, main, footer,
+nav, aside,
+div, section, article,
+h1, h2, h3, h4, h5, h6,
+p, span, a,
+button, input, select, textarea,
+ul, ol, li,
+table, th, td,
+.card, .badge, .button,
+.bg-white, .bg-gray-50, .bg-slate-50,
+.dark .bg-white, .dark .bg-gray-50, .dark .bg-slate-50,
+.border, .border-gray-200, .border-slate-200,
+.dark .border-gray-200, .dark .border-slate-200 {
+  transition: background-color 300ms ease-in-out, 
+              color 300ms ease-in-out, 
+              border-color 300ms ease-in-out;
+}
+
+/* Prevent transition during page load to avoid flash */
+html.no-transitions *,
+html.no-transitions {
+  transition: none !important;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Story 3.8: Safe area insets for iOS devices (AC3, MEDIUM-7 fix) */
+  /* Requires viewport-fit=cover in viewport meta tag */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  
+  /* Combined safe area padding utility */
+  .safe-area-pb {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.5rem);
+  }
+}
