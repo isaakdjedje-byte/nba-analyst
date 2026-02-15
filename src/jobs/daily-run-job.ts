@@ -239,8 +239,24 @@ export async function processDailyRun(
     executedAt: new Date(),
   };
   
+  // C10: Track start time for timeout
+  const runStartTime = Date.now();
+  const DAILY_RUN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  
   // Process each prediction
+  let processedCount = 0;
   for (const prediction of predictions) {
+    processedCount++;
+    
+    // C10: Check timeout every 10 predictions
+    if (processedCount % 10 === 0) {
+      const elapsed = Date.now() - runStartTime;
+      if (elapsed > DAILY_RUN_TIMEOUT_MS) {
+        errors.push(`Daily run timeout: exceeded ${DAILY_RUN_TIMEOUT_MS}ms`);
+        break;
+      }
+    }
+    
     // CRITICAL: Check hard-stop BEFORE each decision
     if (await tracker.isActive()) {
       // Hard-stop activated during run - mark remaining as HARD_STOP

@@ -1,0 +1,405 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Architecture: PostgreSQL with snake_case naming convention
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+// Role Enum values: user, support, ops, admin
+enum Role {
+  user
+  support
+  ops
+  admin
+}
+
+// Data export status
+enum DataExportStatus {
+  pending
+  processing
+  completed
+  expired
+}
+
+// Daily run status
+enum DailyRunStatus {
+  pending
+  running
+  completed
+  failed
+  degraded
+}
+
+// Prediction status
+enum PredictionStatus {
+  pending
+  processed
+  confirmed
+  cancelled
+}
+
+// Policy decision status (Story 2.4: Updated for decision engine)
+enum DecisionStatus {
+  PICK
+  NO_BET
+  HARD_STOP
+  
+  @@map("decision_status")
+}
+
+// Run status for daily runs (Story 2.4)
+enum RunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  
+  @@map("run_status")
+}
+
+// =====================================================
+// EXISTING MODELS (from Epic 1 - User Auth & RGPD)
+// =====================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  password      String?   // Hashed password for credentials provider
+  // NFR9: Data minimization - only email collected as PII
+  // name and image fields removed per RGPD compliance
+  role          Role      @default(user)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // MFA Fields
+  mfaSecret         String?   @map("mfa_secret")  // Encrypted TOTP secret
+  mfaEnabled        Boolean   @default(false) @map("mfa_enabled")
+  mfaBackupCodes    String    @default("[]") @map("mfa_backup_codes") // JSON array of hashed backup codes
+  mfaEnrolledAt     DateTime? @map("mfa_enrolled_at")
+  mfaLastVerifiedAt DateTime? @map("mfa_last_verified_at")
+
+  // MFA Removal Cooldown
+  mfaDisableRequestedAt DateTime? @map("mfa_disable_requested_at")
+
+  // RGPD Fields
+  dataExportRequestedAt DateTime? @map("data_export_requested_at")
+  dataExportCompletedAt DateTime? @map("data_export_completed_at")
+  deletionRequestedAt   DateTime? @map("deletion_requested_at")
+  deletedAt             DateTime? @map("deleted_at")  // Soft delete
+  deletionReason        String?   @map("deletion_reason")
+  
+  // Consent tracking
+  privacyPolicyAcceptedAt DateTime? @map("privacy_policy_accepted_at")
+  privacyPolicyVersion    String?   @map("privacy_policy_version")
+
+  // Relations
+  accounts    Account[]
+  sessions    Session[]
+  auditLogs   AuditLog[]
+  dataExports DataExport[]
+  predictions Prediction[]
+
+  // C5: Index for RGPD soft delete queries
+  @@index([deletedAt])
+  @@index([deletionRequestedAt])
+
+  @@map("users")
+}
+
+model DataExport {
+  id            String          @id @default(cuid())
+  userId        String          @map("user_id")
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestedAt   DateTime        @default(now()) @map("requested_at")
+  completedAt   DateTime?      @map("completed_at")
+  expiresAt     DateTime        @map("expires_at")
+  filePath      String?         @map("file_path")
+  status        DataExportStatus @default(pending)
+  dataHash      String?         @map("data_hash")   // Integrity check
+  
+  @@index([userId])
+  @@index([status])
+  @@map("data_exports")
+}
+
+model DataRetentionPolicy {
+  id            String   @id @default(cuid())
+  dataType      String   @map("data_type")     // user_data, audit_log, decisions
+  retentionDays Int      @map("retention_days")
+  description   String?
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  @@map("data_retention_policies")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// MFA Setup Session for temporary secret storage
+model MFASetupSession {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  secret    String   // Encrypted TOTP secret
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("mfa_setup_sessions")
+}
+
+// Audit log for role changes and sensitive operations (NFR10)
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String   @map("actor_id")
+  action     String   // e.g., "ROLE_CHANGE", "USER_LOGIN", etc.
+  targetId   String?  @map("target_id") // Optional: target user ID
+  targetType String?  @map("target_type") // e.g., "USER", "POLICY"
+  oldValue   String?  @map("old_value")
+  newValue   String?  @map("new_value")
+  metadata   String?  @map("metadata") // JSON string for additional context
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  timestamp  DateTime @default(now())
+  traceId    String  @map("trace_id")
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// =====================================================
+// EPIC 2: PRODUCTION DECISIONNELLE - BOUNDED DOMAINS
+// =====================================================
+
+// Daily run - metadata and scheduling for daily decision production (Story 2.4 Enhanced)
+model DailyRun {
+  id              String     @id @default(uuid())
+  runDate         DateTime   @map("run_date") @db.Date
+  status          RunStatus  // Story 2.4: Changed from DailyRunStatus to RunStatus enum
+  
+  // Execution tracking (Story 2.4)
+  startedAt       DateTime?  @map("started_at")
+  completedAt     DateTime?  @map("completed_at")
+  
+  // Statistics (Story 2.4: Updated field names)
+  totalMatches    Int        @default(0) @map("total_matches")
+  predictionsCount Int      @default(0) @map("predictions_count")
+  picksCount      Int        @default(0) @map("picks_count")
+  noBetCount      Int        @default(0) @map("no_bet_count")
+  hardStopCount   Int        @default(0) @map("hard_stop_count")
+  
+  // Data quality tracking (Story 2.4)
+  dataQualityScore Float?    @map("data_quality_score")
+  errors          String?    // JSON array of error messages
+  
+  // Execution context
+  triggeredBy     String     @map("triggered_by") // manual, scheduled, api
+  traceId         String     @map("trace_id")
+  
+  // Relations
+  predictions     Prediction[]
+  policyDecisions PolicyDecision[]
+  
+  // Metadata
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@unique([runDate])
+  @@index([runDate])
+  @@index([status])
+  @@index([createdAt])
+  @@map("daily_runs")
+}
+
+// Prediction - ML model outputs (Story 2.4 Enhanced)
+model Prediction {
+  id              String   @id @default(uuid())
+  
+  // Match identification
+  matchId         String   @map("match_id")
+  matchDate       DateTime @map("match_date") @db.Date
+  league          String   // nba, nfl, etc.
+  homeTeam        String   @map("home_team")
+  awayTeam        String   @map("away_team")
+  
+  // ML Predictions (Story 2.4: Enhanced ML output fields)
+  winnerPrediction String? @map("winner_prediction") // "HOME", "AWAY"
+  scorePrediction  String? @map("score_prediction")  // e.g., "105-98"
+  overUnderPrediction Float? @map("over_under_prediction") // e.g., 203.5
+  
+  // Confidence and metadata (Story 2.4)
+  confidence      Float
+  modelVersion    String   @map("model_version")
+  featuresHash    String?  @map("features_hash")
+  edge            Float?   // calculated edge percentage
+  
+  // Status
+  status          PredictionStatus @default(pending)
+  
+  // Relations
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runId           String   @map("run_id")
+  run             DailyRun @relation(fields: [runId], references: [id])
+  
+  // Policy decision relation (Story 2.4)
+  policyDecision  PolicyDecision?
+  
+  // Metadata
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  traceId         String   @map("trace_id")
+
+  @@index([runId])
+  @@index([matchId])
+  @@index([createdAt])
+  @@map("predictions")
+}
+
+// Policy decision - Policy engine results (Story 2.4 Enhanced, Story 2.9: Decision History)
+model PolicyDecision {
+  id              String         @id @default(uuid())
+  
+  // Decision context (Story 2.4)
+  predictionId    String         @unique @map("prediction_id")
+  matchId         String         @map("match_id")
+  userId          String         @map("user_id")
+  
+  // Decision outcome (Story 2.4)
+  status          DecisionStatus
+  rationale       String
+  
+  // Gate outcomes (Story 2.4: from architecture.md quality gates)
+  confidenceGate  Boolean        @map("confidence_gate")
+  edgeGate        Boolean        @map("edge_gate")
+  driftGate       Boolean        @map("drift_gate")
+  hardStopGate    Boolean        @map("hard_stop_gate")
+  
+  // Hard-stop details (when applicable)
+  hardStopReason  String?        @map("hard_stop_reason")
+  recommendedAction String?      @map("recommended_action")
+
+  // =====================================================
+  // Story 2.9: Decision History Fields
+  // =====================================================
+  
+  // Match information (FR19)
+  matchDate        DateTime       @map("match_date") @db.Date
+  homeTeam         String         @map("home_team")
+  awayTeam         String         @map("away_team")
+  
+  // Decision output details (FR19)
+  recommendedPick  String?        @map("recommended_pick")  // For PICK status
+  
+  // ML model info
+  confidence       Float          // Confidence score from prediction
+  edge             Float?         @map("edge")              // Calculated edge percentage
+  modelVersion     String         @map("model_version")
+  predictionInputs Json?          @map("prediction_inputs") // Raw inputs for audit
+  
+  // Publication tracking (FR19)
+  publishedAt      DateTime?      @map("published_at")
+  
+  // Audit fields (Story 2.4)
+  traceId         String         @map("trace_id")
+  executedAt      DateTime       @map("executed_at")
+  
+  // Relations (Story 2.4)
+  prediction      Prediction     @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  runId           String         @map("run_id")
+  run             DailyRun       @relation(fields: [runId], references: [id])
+  
+  // Metadata
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([runId])
+  @@index([status])
+  @@index([traceId])
+  @@index([executedAt])
+  @@index([matchId])
+  @@index([matchDate])
+  @@index([publishedAt])
+  @@map("policy_decisions")
+}
+
+// =====================================================
+// EPIC 2.6: HARD-STOP STATE PERSISTENCE
+// =====================================================
+
+// Hard-stop state tracker (Story 2.6)
+model HardStopState {
+  id                  String    @id @default(uuid())
+  
+  // Current state
+  isActive            Boolean   @default(false) @map("is_active")
+  dailyLoss           Float     @default(0) @map("daily_loss")
+  consecutiveLosses   Int       @default(0) @map("consecutive_losses")
+  bankrollPercent     Float     @default(0) @map("bankroll_percent")
+  
+  // Timestamps
+  lastResetAt         DateTime  @default(now()) @map("last_reset_at")
+  triggeredAt         DateTime? @map("triggered_at")
+  
+  // Trigger reason
+  triggerReason       String?   @map("trigger_reason")
+  
+  // Metadata
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("hard_stop_states")
+}

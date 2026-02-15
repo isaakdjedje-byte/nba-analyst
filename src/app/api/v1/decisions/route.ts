@@ -5,8 +5,11 @@
  * Query parameters:
  *   - date: ISO date string (optional, defaults to today)
  *   - status: PICK | NO_BET | HARD_STOP (optional)
+ *   - page: number (optional, default: 1)
+ *   - limit: number (optional, default: 20, max: 100)
  * 
  * Story 3.2: Implement Picks view with today's decisions list
+ * C12: Added pagination support
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -74,7 +77,14 @@ interface DecisionFromDB {
 }
 
 // Fetch decisions from database
-async function fetchDecisionsFromDB(dateStart: Date, dateEnd: Date, status?: string): Promise<DecisionFromDB[]> {
+// C12: Added pagination support (skip, limit)
+async function fetchDecisionsFromDB(
+  dateStart: Date, 
+  dateEnd: Date, 
+  status?: string,
+  skip?: number,
+  limit?: number
+): Promise<DecisionFromDB[]> {
   const where: DecisionWhereClause = {
     createdAt: {
       gte: dateStart,
@@ -85,6 +95,33 @@ async function fetchDecisionsFromDB(dateStart: Date, dateEnd: Date, status?: str
   if (status) {
     where.status = status;
   }
+
+  return prisma.policyDecision.findMany({
+    where,
+    include: {
+      prediction: {
+        select: {
+          id: true,
+          matchId: true,
+          league: true,
+        },
+      },
+      run: {
+        select: {
+          id: true,
+          runDate: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    // C12: Add pagination
+    ...(skip !== undefined ? { skip } : {}),
+    ...(limit !== undefined ? { take: limit } : {}),
+  }) as Promise<DecisionFromDB[]>;
+}
 
   const decisions = await prisma.policyDecision.findMany({
     where,
@@ -189,6 +226,13 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const dateParam = searchParams.get('date');
     const statusParam = searchParams.get('status');
+    
+    // C12: Parse pagination parameters
+    const pageParam = searchParams.get('page');
+    const limitParam = searchParams.get('limit');
+    const page = pageParam ? parseInt(pageParam, 10) : 1;
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 20; // Max 100
+    const skip = (page - 1) * limit;
 
     // Validate status if provided
     if (statusParam && !isValidStatus(statusParam)) {
@@ -197,6 +241,21 @@ export async function GET(request: NextRequest) {
           error: {
             code: 'INVALID_STATUS',
             message: `Statut invalide: ${statusParam}. Doit être PICK, NO_BET ou HARD_STOP`,
+            details: {},
+          },
+          meta: { traceId, timestamp },
+        },
+        { status: 400 }
+      );
+    }
+    
+    // C12: Validate pagination
+    if (page < 1 || limit < 1) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'INVALID_PAGINATION',
+            message: 'Les paramètres page et limit doivent être >= 1',
             details: {},
           },
           meta: { traceId, timestamp },
@@ -252,16 +311,30 @@ export async function GET(request: NextRequest) {
       console.warn('[DecisionsAPI] Cache error:', cacheError);
     }
 
-    // Fetch from database if not in cache
-    if (!decisions) {
-      decisions = await fetchDecisionsFromDB(dateStart, dateEnd, statusParam || undefined);
+    // C12: Get total count first
+    const totalCount = await prisma.policyDecision.count({
+      where: {
+        createdAt: {
+          gte: dateStart,
+          lte: dateEnd,
+        },
+        ...(statusParam ? { status: statusParam } : {}),
+      },
+    });
 
-      // Store in cache for 5 minutes
-      try {
-        const redis = await getRedisClient();
-        await redis.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(decisions));
-      } catch (cacheError) {
-        console.warn('[DecisionsAPI] Failed to cache:', cacheError);
+    // Fetch from database if not in cache
+    // C12: Skip cache for paginated requests
+    if (!decisions || page > 1) {
+      decisions = await fetchDecisionsFromDB(dateStart, dateEnd, statusParam || undefined, skip, limit);
+
+      // Store in cache for 5 minutes (only page 1)
+      if (page === 1) {
+        try {
+          const redis = await getRedisClient();
+          await redis.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(decisions));
+        } catch (cacheError) {
+          console.warn('[DecisionsAPI] Failed to cache:', cacheError);
+        }
       }
     }
 

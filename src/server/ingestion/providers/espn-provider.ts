@@ -77,7 +77,17 @@ export class ESPNProvider extends BaseProvider {
       };
     } catch (error) {
       this.logError('getScoreboard', error, traceId);
-      throw this.createProviderError('Failed to fetch ESPN scoreboard', error, traceId);
+      // C6: Return empty result instead of throwing to allow fallback
+      console.warn(`[${traceId}] ESPN API failed, returning empty result for fallback`);
+      return {
+        data: [],
+        metadata: {
+          source: this.config.name,
+          timestamp: new Date(),
+          traceId,
+          latency: 0,
+        },
+      };
     }
   }
 

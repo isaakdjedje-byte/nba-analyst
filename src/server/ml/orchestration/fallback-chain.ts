@@ -101,15 +101,27 @@ export interface DataQualityGates {
 // ============================================
 
 export class FallbackChain {
-  private readonly logger: Logger;
+  private logger: Logger;
+  private evaluationDepth: number = 0;
+  private readonly MAX_EVALUATION_DEPTH = 3;
+  private readonly MAX_ITERATIONS = 10;
 
   constructor(
-    private readonly config: FallbackChainConfig,
-    private readonly mlRegistry: ModelRegistry,
-    private readonly dataQuality: DataQualityGates,
+    private config: FallbackChainConfig,
+    private mlRegistry: ModelRegistry,
+    private dataQuality: DataQualityGates,
     logger: Logger
   ) {
-    this.logger = logger.child({ component: 'FallbackChain' });
+    this.logger = logger;
+    
+    // C9: Validate config to prevent infinite loops
+    if (!config.fallbackLevels || config.fallbackLevels.length === 0) {
+      throw new Error('FallbackChainConfig.fallbackLevels must contain at least one level');
+    }
+    
+    if (config.fallbackLevels.length > this.MAX_ITERATIONS) {
+      throw new Error(`FallbackChainConfig.fallbackLevels exceeds maximum of ${this.MAX_ITERATIONS}`);
+    }
   }
 
   /**
@@ -118,9 +130,48 @@ export class FallbackChain {
    * or forced No-Bet if all levels exhausted
    */
   async evaluate(input: PredictionInput): Promise<FallbackChainResult> {
+    // C9: Prevent infinite recursion
+    this.evaluationDepth++;
+    if (this.evaluationDepth > this.MAX_EVALUATION_DEPTH) {
+      this.evaluationDepth--;
+      this.logger.error('FallbackChain evaluation depth exceeded maximum');
+      return {
+        finalLevel: 'force_no_bet',
+        decision: this.createForcedNoBet([]),
+        qualityScore: 0,
+        fallbackAttempts: [],
+        wasForcedNoBet: true,
+      };
+    }
+    
+    try {
+      return await this.evaluateInternal(input);
+    } finally {
+      this.evaluationDepth--;
+    }
+  }
+  
+  /**
+   * C9: Internal evaluation with infinite loop protection
+   */
+  private async evaluateInternal(input: PredictionInput): Promise<FallbackChainResult> {
     const attempts: FallbackAttempt[] = [];
+    let iterationCount = 0;
     
     for (const level of this.config.fallbackLevels) {
+      iterationCount++;
+      
+      // C9: Safety check against infinite loops
+      if (iterationCount > this.MAX_ITERATIONS) {
+        this.logger.error('FallbackChain iteration count exceeded maximum');
+        return {
+          finalLevel: 'force_no_bet',
+          decision: this.createForcedNoBet(attempts),
+          qualityScore: 0,
+          fallbackAttempts: attempts,
+          wasForcedNoBet: true,
+        };
+      }
       // Skip force_no_bet level as it's not a real model
       if (level === 'force_no_bet') {
         attempts.push({

@@ -48,6 +48,10 @@ export class HardStopTracker {
   
   // In-memory cache for performance (synced with DB)
   private initialized: boolean = false;
+  
+  // C8: Lock mechanism to prevent race conditions
+  private updateLock: Promise<void> = Promise.resolve();
+  private isUpdating: boolean = false;
 
   constructor(config: HardStopsConfig, prisma: PrismaClient) {
     this.config = config;
@@ -61,6 +65,32 @@ export class HardStopTracker {
       bankrollPercent: 0,
       lastResetAt: new Date(),
     };
+  }
+  
+  /**
+   * C8: Acquire lock for state update
+   * Prevents race conditions during concurrent updates
+   */
+  private async acquireLock<T>(operation: () => Promise<T>): Promise<T> {
+    // Wait for any pending operation
+    while (this.isUpdating) {
+      await this.updateLock;
+    }
+    
+    this.isUpdating = true;
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+    
+    this.updateLock = lockPromise;
+    
+    try {
+      return await operation();
+    } finally {
+      this.isUpdating = false;
+      resolveLock!();
+    }
   }
 
   /**
@@ -165,18 +195,37 @@ export class HardStopTracker {
       await this.initialize();
     }
 
-    const wasActive = this.state.isActive;
+    // C8: Use lock to prevent race conditions
+    return this.acquireLock(async () => {
+      // Re-fetch state from DB to get latest
+      const dbState = await this.prisma.hardStopState.findFirst({
+        orderBy: { createdAt: 'desc' },
+      });
+      
+      if (dbState) {
+        this.state = {
+          isActive: dbState.isActive,
+          dailyLoss: dbState.dailyLoss,
+          consecutiveLosses: dbState.consecutiveLosses,
+          bankrollPercent: dbState.bankrollPercent,
+          lastResetAt: dbState.lastResetAt,
+          triggeredAt: dbState.triggeredAt ?? undefined,
+          triggerReason: dbState.triggerReason ?? undefined,
+        };
+      }
 
-    // If already active, no updates needed
-    if (wasActive) {
-      return;
-    }
+      const wasActive = this.state.isActive;
 
-    // Update based on decision outcome
-    if (decisionStatus === 'HARD_STOP') {
-      // Already handled by activate()
-      return;
-    }
+      // If already active, no updates needed
+      if (wasActive) {
+        return;
+      }
+
+      // Update based on decision outcome
+      if (decisionStatus === 'HARD_STOP') {
+        // Already handled by activate()
+        return;
+      }
 
     // Update consecutive losses
     if (outcome === 'LOSS') {
@@ -196,10 +245,11 @@ export class HardStopTracker {
 
     // Persist state
     await this.persistState();
+    }); // C8: Close acquireLock
   }
 
   /**
-   * Update daily loss amount
+   * C8: Update daily loss amount with race condition protection
    * Call this after each loss to accumulate daily loss
    */
   async updateDailyLoss(amount: number): Promise<void> {
@@ -207,20 +257,33 @@ export class HardStopTracker {
       await this.initialize();
     }
 
-    if (this.state.isActive) {
-      return;
-    }
+    // C8: Use lock for concurrent updates
+    return this.acquireLock(async () => {
+      // Re-fetch latest state
+      const dbState = await this.prisma.hardStopState.findFirst({
+        orderBy: { createdAt: 'desc' },
+      });
+      
+      if (dbState) {
+        this.state.dailyLoss = dbState.dailyLoss;
+        this.state.isActive = dbState.isActive;
+      }
 
-    this.state.dailyLoss += amount;
-    
-    // Update bankroll percent after daily loss changes
-    this.updateBankrollPercent();
+      if (this.state.isActive) {
+        return;
+      }
 
-    // Check if hard-stop should trigger
-    await this.checkAndActivate();
+      this.state.dailyLoss += amount;
+      
+      // Update bankroll percent after daily loss changes
+      this.updateBankrollPercent();
 
-    // Persist state
-    await this.persistState();
+      // Check if hard-stop should trigger
+      await this.checkAndActivate();
+
+      // Persist state
+      await this.persistState();
+    });
   }
 
   /**
