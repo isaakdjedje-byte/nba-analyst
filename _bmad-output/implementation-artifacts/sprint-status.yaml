@@ -67,7 +67,7 @@ development_status:
   2-11-implementer-les-tests-e2e-de-l-api-hard-stop: done  # ✅ Code review completed, 4 issues fixed and committed 2026-02-14
 
   # Epic 3: Experience Picks/No-Bet explicable (mobile-first)
-  epic-3: in-progress  # 🔄 Story 3.1 completed, layout ready for dependent stories
+  epic-3: done  # ✅ All 10 stories completed 2026-02-15
   3-1-creer-la-structure-dashboard-avec-navigation-picks-no-bet-performance-logs: done  # ✅ Dashboard layout with navigation implemented, build successful, E2E AC4 passing 2026-02-14
   3-2-implementer-la-vue-picks-avec-liste-des-decisions-du-jour: done  # ✅ Code review completed, 8 issues fixed, all files committed 2026-02-14
   3-3-creer-le-composant-decisioncard-avec-statut-explicite: done  # ✅ Code review completed, 4 issues fixed (responsive detection, keyboard nav, null-safety, docs) 2026-02-14
@@ -77,29 +77,29 @@ development_status:
   3-7-creer-le-composant-guardrailbanner-pour-etat-global: done  # ✅ Code review completed: 9 CRITICAL/HIGH/MEDIUM issues fixed (E2E tests unskipped, no-bet integration, old file removed), status: done 2026-02-15
   3-8-implementer-le-responsive-mobile-first-2-min-parcours: done  # ✅ Code review completed 2026-02-15: Round 2 - 9 issues fixed (25 E2E tests unskipped, viewport maxScale=1.3, measureTTI improved)
   3-9-implementer-les-etats-ux-critiques-loading-empty-degraded-blocked: done  # ✅ Code review completed, all fixes applied, 55 tests passing 2026-02-15
-  3-10-implementer-le-dark-mode-avec-coherence-semantique: in-progress  # 🔄 Code review: 2 HIGH + 2 MEDIUM issues fixed, needs git commit
-  epic-3-retrospective: optional
+  3-10-implementer-le-dark-mode-avec-coherence-semantique: done  # ✅ Code review completed: 4 issues fixed (system preference listener, CSS optimization), 16 unit tests, committed 2026-02-15
+  epic-3-retrospective: done  # ✅ Retrospective completed 2026-02-15 - 3 actions defined, 4 prep tasks for Epic 4
 
   # Epic 4: Performance, logs et replay d'audit
-  epic-4: backlog
-  4-1-creer-la-vue-performance-avec-historique-des-recommandations: backlog
-  4-2-implementer-la-vue-logs-avec-historique-des-decisions: backlog
-  4-3-creer-le-composant-decisiontimeline-pour-replay-decisionnel: backlog
-  4-4-implementer-l-investigation-de-decision-contestee: backlog
-  4-5-implementer-les-metadonnees-d-audit-exploitables: backlog
+  epic-4: in-progress  # First story 4-1 being created
+  4-1-creer-la-vue-performance-avec-historique-des-recommandations: done  # ✅ Code review completed: 4 issues fixed (AC4 URL state, traceId in hook, types updated, E2E tests added) 2026-02-15
+  4-2-implementer-la-vue-logs-avec-historique-des-decisions: done  # ✅ Code review completed: 5 issues fixed (E2E unskipped, test IDs, data signals, session sort), build passing 2026-02-15
+  4-3-creer-le-composant-decisiontimeline-pour-replay-decisionnel: done  # ✅ Code review completed: 2 issues fixed (uuid import replaced with crypto.randomUUID(), typo fixed), build passing 2026-02-15
+  4-4-implementer-l-investigation-de-decision-contestee: done  # ✅ Code review completed: 6 issues fixed (user filter, PDF export, data quality signals, ML factors, audit logging), build passing 2026-02-15
+  4-5-implementer-les-metadonnees-d-audit-exploitables: done  # ✅ Code review completed: 7 issues fixed (Task 2 fingerprints, performance filtering, retention, IP address, docs), build passing 2026-02-15
   epic-4-retrospective: optional
 
   # Epic 5: Gouvernance policy operable
-  epic-5: backlog
-  5-1-creer-le-panneau-d-affichage-des-causes-de-blocage-policy: backlog
-  5-2-implementer-l-interface-admin-de-gestion-des-parametres-policy: backlog
-  5-3-implementer-le-versioning-et-historique-des-changements-policy: backlog
-  epic-5-retrospective: optional
+  epic-5: done  # All 3 stories completed 2026-02-16
+  5-1-creer-le-panneau-d-affichage-des-causes-de-blocage-policy: done  # ✅ Code review completed: 7 issues fixed (XSS sanitization, threshold extraction, category detection, unit tests), 5 action items added for remaining integration 2026-02-15
+  5-2-implementer-l-interface-admin-de-gestion-des-parametres-policy: done  # ✅ Code review completed: 5 CRITICAL/HIGH issues fixed (config persistence, audit logging, RBAC, security events), E2E tests rewritten 2026-02-16
+  5-3-implementer-le-versioning-et-historique-des-changements-policy: done  # ✅ Code review completed: 5 issues fixed (race condition, UI integration, centralized exports, API/E2E tests) 2026-02-16
+  epic-5-retrospective: done  # ✅ Retrospective completed 2026-02-16 - 3 prep tasks for Epic 6, 3 action items defined
 
   # Epic 6: Readiness B2B et interfaces de consultation
-  epic-6: backlog
-  6-1-concevoir-et-implementer-l-api-rest-v1-pour-decisions-b2b: backlog
-  6-2-implementer-les-endpoints-d-explicabilite-pour-b2b: backlog
-  6-3-creer-le-systeme-de-profils-policy-configurables-b2b: backlog
-  6-4-implementer-la-documentation-api-openapi-et-exemples: backlog
+  epic-6: in-progress  # Story 6-1 completed, remaining stories in backlog
+  6-1-concevoir-et-implementer-l-api-rest-v1-pour-decisions-b2b: done  # ✅ Code review completed: 3 issues fixed (Vitest, error format, env var), 28 ATDD tests activated
+  6-2-implementer-les-endpoints-d-explicabilite-pour-b2b: done  # ✅ Code review completed: 7 issues fixed (Task 3.1 unit tests added, ATDD tests unskipped, unused import removed, runtime validation added, schemas extended), build passing
+  6-3-creer-le-systeme-de-profils-policy-configurables-b2b: done  # ✅ Code review completed: 6 issues fixed (UUID validation, 404 for history, reason field, changedBy, 204 header), all fixes applied 2026-02-16
+  6-4-implementer-la-documentation-api-openapi-et-exemples: done  # Code review completed: 6 issues fixed (error examples, explain endpoint errors, DecisionStatus enum, OpenAPI 3.1.0, DELETE errors, E2E tests) 2026-02-16
   epic-6-retrospective: optional
