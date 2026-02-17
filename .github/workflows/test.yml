@@ -36,7 +36,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm ci --no-audit
 
       - name: Run ESLint
         run: npm run lint
@@ -60,7 +60,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm ci --no-audit
 
       - name: Run TypeScript check
         run: npm run typecheck
@@ -88,7 +88,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm ci --no-audit
 
       - name: Verify all hardening gates
         run: npm run verify:hardening:ci
@@ -113,10 +113,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
-
-      - name: Install Prisma
-        run: npm install prisma @prisma/client --save-dev
+        run: npm ci --no-audit
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -166,7 +163,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm ci --no-audit
 
       - name: Build application
         run: npm run build
@@ -201,7 +198,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: npm ci --no-audit
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
