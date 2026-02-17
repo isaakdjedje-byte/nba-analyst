@@ -45,3 +45,36 @@ next-env.d.ts
 # Large directories
 _bmad-output/
 .opencode/
+
+# Local runtime artifacts
+tmp/
+prisma/*.db
+prisma/*.db-journal
+
+# Generated benchmark/calibration outputs
+*-benchmark*.json
+*calibration*.json
+*comparison*.json
+*training-metrics.json
+FINAL_*_REPORT.md
+HYBRID_*_REPORT.md
+MONITORING_DASHBOARD.md
+
+# Generated data export artifacts
+exports/*.json
+
+# Local datasets and ML artifacts
+data/**/*.csv
+data/**/*.sqlite
+models/*.joblib
+nba-data/*.duckdb
+nba-data/*.duckdb.wal
+nba-data/**/*.parquet
+nba-data/**/*.csv
+nba-data/**/*.json
+
+# Python local cache/venv artifacts
+python-service/.venv/
+python-service/__pycache__/
+python-service/.pytest_cache/
+python-service/**/*.pyc
