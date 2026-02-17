@@ -153,6 +153,8 @@ jobs:
     needs: [lint, typecheck, contracts, migration-gate]
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test?connection_limit=5
+      MFA_ENCRYPTION_KEY: test-key-32-chars-long-for-mfa-encryption!!
+      NEXTAUTH_SECRET: test-nextauth-secret-for-ci-only
 
     steps:
       - name: Checkout code
@@ -183,6 +185,8 @@ jobs:
     needs: [build]
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test?connection_limit=5
+      MFA_ENCRYPTION_KEY: test-key-32-chars-long-for-mfa-encryption!!
+      NEXTAUTH_SECRET: test-nextauth-secret-for-ci-only
     outputs:
       current-epic: ${{ steps.read-epic.outputs.epic }}
 
