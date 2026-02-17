@@ -1,0 +1,416 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GuardrailBanner > Snapshot Tests (Regression) > matches snapshot for HARD_STOP status 1`] = `
+<div
+  aria-label="Statut global: Bloquage actif"
+  aria-live="assertive"
+  class="
+    w-full border-b px-4 py-3
+    sticky top-0 z-40
+    bg-orange-50 dark:bg-orange-900/20
+    border-orange-200 dark:border-orange-800
+  "
+  data-status="HARD_STOP"
+  data-testid="guardrail-banner"
+  data-variant="sticky"
+  role="alert"
+>
+  <div
+    class="mx-auto max-w-7xl flex items-start justify-between gap-4"
+  >
+    <div
+      class="flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-shield-alert h-5 w-5 flex-shrink-0 mt-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        style="color: rgb(194, 65, 12);"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+        />
+        <path
+          d="M12 8v4"
+        />
+        <path
+          d="M12 16h.01"
+        />
+      </svg>
+      <div
+        class="flex-1 min-w-0"
+      >
+        <h3
+          class="font-semibold text-sm text-orange-800 dark:text-orange-200"
+        >
+          Bloquage actif
+        </h3>
+        <p
+          class="text-sm mt-1 text-orange-800 dark:text-orange-200 opacity-90"
+        >
+          Cap de perte journalier atteint
+           • 
+          Reprise recommandée au prochain cycle
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`GuardrailBanner > Snapshot Tests (Regression) > matches snapshot for HEALTHY status 1`] = `
+<div
+  aria-label="Statut global: Système opérationnel"
+  aria-live="polite"
+  class="
+    w-full border-b px-4 py-3
+    sticky top-0 z-40
+    bg-emerald-50 dark:bg-emerald-900/20
+    border-emerald-200 dark:border-emerald-800
+  "
+  data-status="HEALTHY"
+  data-testid="guardrail-banner"
+  data-variant="sticky"
+  role="status"
+>
+  <div
+    class="mx-auto max-w-7xl flex items-start justify-between gap-4"
+  >
+    <div
+      class="flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-check-big h-5 w-5 flex-shrink-0 mt-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        style="color: rgb(14, 159, 110);"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M21.801 10A10 10 0 1 1 17 3.335"
+        />
+        <path
+          d="m9 11 3 3L22 4"
+        />
+      </svg>
+      <div
+        class="flex-1 min-w-0"
+      >
+        <h3
+          class="font-semibold text-sm text-emerald-800 dark:text-emerald-200"
+        >
+          Système opérationnel
+        </h3>
+        <p
+          class="text-sm mt-1 text-emerald-800 dark:text-emerald-200 opacity-90"
+        >
+          Tous les indicateurs sont dans les limites acceptables
+           • 
+          Vous pouvez consulter les recommandations normalement
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`GuardrailBanner > Snapshot Tests (Regression) > matches snapshot for WARNING status 1`] = `
+<div
+  aria-label="Statut global: Attention requise"
+  aria-live="assertive"
+  class="
+    w-full border-b px-4 py-3
+    sticky top-0 z-40
+    bg-amber-50 dark:bg-amber-900/20
+    border-amber-200 dark:border-amber-800
+  "
+  data-status="WARNING"
+  data-testid="guardrail-banner"
+  data-variant="sticky"
+  role="alert"
+>
+  <div
+    class="mx-auto max-w-7xl flex items-start justify-between gap-4"
+  >
+    <div
+      class="flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-triangle-alert h-5 w-5 flex-shrink-0 mt-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        style="color: rgb(180, 83, 9);"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+        />
+        <path
+          d="M12 9v4"
+        />
+        <path
+          d="M12 17h.01"
+        />
+      </svg>
+      <div
+        class="flex-1 min-w-0"
+      >
+        <h3
+          class="font-semibold text-sm text-amber-800 dark:text-amber-200"
+        >
+          Attention requise
+        </h3>
+        <p
+          class="text-sm mt-1 text-amber-800 dark:text-amber-200 opacity-90"
+        >
+          Approche des limites de risque
+           • 
+          Surveillez vos positions et restez vigilant
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`GuardrailBanner > Snapshot Tests (Regression) > matches snapshot for inline variant 1`] = `
+<div
+  aria-label="Statut global: Système opérationnel"
+  aria-live="polite"
+  class="
+    w-full border-b px-4 py-3
+    
+    bg-emerald-50 dark:bg-emerald-900/20
+    border-emerald-200 dark:border-emerald-800
+  "
+  data-status="HEALTHY"
+  data-testid="guardrail-banner"
+  data-variant="inline"
+  role="status"
+>
+  <div
+    class="mx-auto max-w-7xl flex items-start justify-between gap-4"
+  >
+    <div
+      class="flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-check-big h-5 w-5 flex-shrink-0 mt-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        style="color: rgb(14, 159, 110);"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M21.801 10A10 10 0 1 1 17 3.335"
+        />
+        <path
+          d="m9 11 3 3L22 4"
+        />
+      </svg>
+      <div
+        class="flex-1 min-w-0"
+      >
+        <h3
+          class="font-semibold text-sm text-emerald-800 dark:text-emerald-200"
+        >
+          Système opérationnel
+        </h3>
+        <p
+          class="text-sm mt-1 text-emerald-800 dark:text-emerald-200 opacity-90"
+        >
+          Tous les indicateurs sont dans les limites acceptables
+           • 
+          Vous pouvez consulter les recommandations normalement
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`GuardrailBanner > Snapshot Tests (Regression) > matches snapshot for sticky variant 1`] = `
+<div
+  aria-label="Statut global: Système opérationnel"
+  aria-live="polite"
+  class="
+    w-full border-b px-4 py-3
+    sticky top-0 z-40
+    bg-emerald-50 dark:bg-emerald-900/20
+    border-emerald-200 dark:border-emerald-800
+  "
+  data-status="HEALTHY"
+  data-testid="guardrail-banner"
+  data-variant="sticky"
+  role="status"
+>
+  <div
+    class="mx-auto max-w-7xl flex items-start justify-between gap-4"
+  >
+    <div
+      class="flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-check-big h-5 w-5 flex-shrink-0 mt-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        style="color: rgb(14, 159, 110);"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M21.801 10A10 10 0 1 1 17 3.335"
+        />
+        <path
+          d="m9 11 3 3L22 4"
+        />
+      </svg>
+      <div
+        class="flex-1 min-w-0"
+      >
+        <h3
+          class="font-semibold text-sm text-emerald-800 dark:text-emerald-200"
+        >
+          Système opérationnel
+        </h3>
+        <p
+          class="text-sm mt-1 text-emerald-800 dark:text-emerald-200 opacity-90"
+        >
+          Tous les indicateurs sont dans les limites acceptables
+           • 
+          Vous pouvez consulter les recommandations normalement
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`GuardrailBanner > Snapshot Tests (Regression) > matches snapshot with dismiss button 1`] = `
+<div
+  aria-label="Statut global: Système opérationnel"
+  aria-live="polite"
+  class="
+    w-full border-b px-4 py-3
+    sticky top-0 z-40
+    bg-emerald-50 dark:bg-emerald-900/20
+    border-emerald-200 dark:border-emerald-800
+  "
+  data-status="HEALTHY"
+  data-testid="guardrail-banner"
+  data-variant="sticky"
+  role="status"
+>
+  <div
+    class="mx-auto max-w-7xl flex items-start justify-between gap-4"
+  >
+    <div
+      class="flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-check-big h-5 w-5 flex-shrink-0 mt-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        style="color: rgb(14, 159, 110);"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M21.801 10A10 10 0 1 1 17 3.335"
+        />
+        <path
+          d="m9 11 3 3L22 4"
+        />
+      </svg>
+      <div
+        class="flex-1 min-w-0"
+      >
+        <h3
+          class="font-semibold text-sm text-emerald-800 dark:text-emerald-200"
+        >
+          Système opérationnel
+        </h3>
+        <p
+          class="text-sm mt-1 text-emerald-800 dark:text-emerald-200 opacity-90"
+        >
+          Tous les indicateurs sont dans les limites acceptables
+           • 
+          Vous pouvez consulter les recommandations normalement
+        </p>
+      </div>
+    </div>
+    <button
+      aria-label="Masquer le bandeau"
+      class="
+              flex-shrink-0 p-2 rounded min-h-[44px] min-w-[44px]
+              hover:bg-black/5 dark:hover:bg-white/10
+              focus:outline-none focus:ring-2 focus:ring-offset-1
+              focus:ring-current transition-colors
+            "
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-x h-4 w-4"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M18 6 6 18"
+        />
+        <path
+          d="m6 6 12 12"
+        />
+      </svg>
+    </button>
+  </div>
+</div>
+`;

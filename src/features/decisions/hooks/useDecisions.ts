@@ -42,18 +42,19 @@ export function useDecisions(options: UseDecisionsOptions = {}) {
     queryKey: [QUERY_KEY, { date, status }],
     queryFn: async () => {
       try {
-        return await fetchDecisions(date, status);
+        const result = await fetchDecisions(date, status);
+        return result;
       } catch (error) {
         // Extract traceId from API error response for logging (AC6)
         if (error instanceof Error) {
           const apiError = error as unknown as ApiError;
           throw new DecisionError(
-            error.message,
+            error.message || 'Unknown error occurred',
             apiError.meta?.traceId,
             apiError.error?.code
           );
         }
-        throw error;
+        throw new DecisionError(String(error) || 'Unknown error occurred');
       }
     },
     enabled,

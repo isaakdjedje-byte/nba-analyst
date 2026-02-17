@@ -18,7 +18,8 @@ import { prisma } from '@/server/db/client';
 import { getRedisClient } from '@/server/cache/redis-client';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
-import type { DecisionStatus } from '@/server/db/repositories/policy-decisions-repository';
+
+type DecisionStatus = 'PICK' | 'NO_BET' | 'HARD_STOP';
 
 // Cache TTL constant (5 minutes)
 const CACHE_TTL_SECONDS = 300;
@@ -73,6 +74,64 @@ interface DecisionFromDB {
     runDate: Date;
     status: string;
   } | null;
+}
+
+function normalizeDecisionFromCache(input: unknown): DecisionFromDB | null {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  const record = input as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const matchId = typeof record.matchId === 'string' ? record.matchId : null;
+  const homeTeam = typeof record.homeTeam === 'string' ? record.homeTeam : null;
+  const awayTeam = typeof record.awayTeam === 'string' ? record.awayTeam : null;
+  const status = typeof record.status === 'string' ? record.status : null;
+  const rationale = typeof record.rationale === 'string' ? record.rationale : null;
+  const runId = typeof record.runId === 'string' ? record.runId : null;
+  const confidence = typeof record.confidence === 'number' ? record.confidence : null;
+
+  if (!id || !matchId || !homeTeam || !awayTeam || !status || !rationale || !runId || confidence === null) {
+    return null;
+  }
+
+  const matchDate = new Date(String(record.matchDate));
+  const createdAt = new Date(String(record.createdAt));
+
+  if (Number.isNaN(matchDate.getTime()) || Number.isNaN(createdAt.getTime())) {
+    return null;
+  }
+
+  return {
+    id,
+    matchId,
+    homeTeam,
+    awayTeam,
+    matchDate,
+    status,
+    rationale,
+    edge: typeof record.edge === 'number' ? record.edge : null,
+    confidence,
+    recommendedPick: typeof record.recommendedPick === 'string' ? record.recommendedPick : null,
+    runId,
+    createdAt,
+    prediction: record.prediction && typeof record.prediction === 'object'
+      ? {
+          id: String((record.prediction as Record<string, unknown>).id ?? ''),
+          matchId: String((record.prediction as Record<string, unknown>).matchId ?? ''),
+          league: typeof (record.prediction as Record<string, unknown>).league === 'string'
+            ? String((record.prediction as Record<string, unknown>).league)
+            : null,
+        }
+      : null,
+    run: record.run && typeof record.run === 'object'
+      ? {
+          id: String((record.run as Record<string, unknown>).id ?? ''),
+          runDate: new Date(String((record.run as Record<string, unknown>).runDate ?? new Date().toISOString())),
+          status: String((record.run as Record<string, unknown>).status ?? ''),
+        }
+      : null,
+  };
 }
 
 // Fetch decisions from database
@@ -130,6 +189,14 @@ function getTodayBoundaries(): { start: Date; end: Date } {
   return { start, end };
 }
 
+function parsePositiveInteger(value: string | null, fallback: number): number {
+  if (value === null) return fallback;
+  if (!/^\d+$/.test(value)) return NaN;
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) ? parsed : NaN;
+}
+
 export async function GET(request: NextRequest) {
   const traceId = generateTraceId();
   const timestamp = new Date().toISOString();
@@ -162,14 +229,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Authentication check using getToken for App Router
-    // Note: In development, if auth fails, we still allow access for testing
     let token = null;
-    let userRole = 'user'; // Default role for development
+    let userRole = 'user';
     
     try {
+      const tokenConfig = process.env.NEXTAUTH_SECRET
+        ? { req: request, secret: process.env.NEXTAUTH_SECRET }
+        : { req: request };
+
       token = await getToken({ 
-        req: request, 
-        secret: process.env.NEXTAUTH_SECRET,
+        ...tokenConfig,
       });
       
       if (token && token.role) {
@@ -179,8 +248,11 @@ export async function GET(request: NextRequest) {
       console.warn('[DecisionsAPI] Auth check failed:', authError);
     }
     
-    // Skip strict auth check in development
-    if (process.env.NODE_ENV === 'production' && !token) {
+    const allowUnauthenticatedDevAccess =
+      process.env.NODE_ENV !== 'production' &&
+      process.env.ALLOW_UNAUTHENTICATED_DECISIONS_DEV === 'true';
+
+    if (!token && !allowUnauthenticatedDevAccess) {
       return NextResponse.json(
         {
           error: {
@@ -192,6 +264,10 @@ export async function GET(request: NextRequest) {
         },
         { status: 401 }
       );
+    }
+
+    if (allowUnauthenticatedDevAccess && !token) {
+      userRole = 'admin';
     }
 
     // RBAC check - only user, support, ops, admin can read
@@ -218,8 +294,9 @@ export async function GET(request: NextRequest) {
     // C12: Parse pagination parameters
     const pageParam = searchParams.get('page');
     const limitParam = searchParams.get('limit');
-    const page = pageParam ? parseInt(pageParam, 10) : 1;
-    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 20; // Max 100
+    const page = parsePositiveInteger(pageParam, 1);
+    const parsedLimit = parsePositiveInteger(limitParam, 20);
+    const limit = Number.isNaN(parsedLimit) ? NaN : Math.min(parsedLimit, 100); // Max 100
     const skip = (page - 1) * limit;
 
     // Validate status if provided
@@ -238,7 +315,7 @@ export async function GET(request: NextRequest) {
     }
     
     // C12: Validate pagination
-    if (page < 1 || limit < 1) {
+    if (!Number.isSafeInteger(page) || !Number.isSafeInteger(limit) || page < 1 || limit < 1) {
       return NextResponse.json(
         {
           error: {
@@ -274,12 +351,12 @@ export async function GET(request: NextRequest) {
       }
       dateStart = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 0, 0, 0);
       dateEnd = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
-      cacheDateKey = dateParam.split('T')[0];
+      cacheDateKey = dateParam.split('T')[0] || parsedDate.toISOString().split('T')[0] || new Date().toISOString().split('T')[0] || 'unknown-date';
     } else {
       const today = getTodayBoundaries();
       dateStart = today.start;
       dateEnd = today.end;
-      cacheDateKey = new Date().toISOString().split('T')[0];
+      cacheDateKey = new Date().toISOString().split('T')[0] || 'unknown-date';
     }
 
     // Try cache first (cache-aside pattern)
@@ -291,8 +368,17 @@ export async function GET(request: NextRequest) {
       const redis = await getRedisClient();
       const cached = await redis.get(cacheKey);
       if (cached) {
-        decisions = JSON.parse(cached as string);
-        fromCache = true;
+        const parsed = JSON.parse(cached as string) as unknown;
+        if (Array.isArray(parsed)) {
+          const normalized = parsed
+            .map((item) => normalizeDecisionFromCache(item))
+            .filter((item): item is DecisionFromDB => item !== null);
+
+          if (normalized.length > 0) {
+            decisions = normalized;
+            fromCache = true;
+          }
+        }
       }
     } catch (cacheError) {
       // Log cache error but continue to database
@@ -313,6 +399,10 @@ export async function GET(request: NextRequest) {
     // Fetch from database if not in cache
     // C12: Skip cache for paginated requests
     if (!decisions || page > 1) {
+      if (page > 1) {
+        fromCache = false;
+      }
+
       decisions = await fetchDecisionsFromDB(dateStart, dateEnd, statusParam || undefined, skip, limit);
 
       // Store in cache for 5 minutes (only page 1)

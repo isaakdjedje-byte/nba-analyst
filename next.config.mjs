@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   // Exclude test files from the build
   webpack: (config, { isServer }) => {
     config.module.rules.push({
@@ -10,6 +7,19 @@ const nextConfig = {
       use: 'null-loader',
     });
     return config;
+  },
+  // Handle pages that require dynamic rendering
+  experimental: {
+    optimizePackageImports: ['@prisma/client', 'next-auth'],
+  },
+  async redirects() {
+    return [
+      {
+        source: '/dashboard',
+        destination: '/dashboard/picks',
+        permanent: true,
+      },
+    ];
   },
 }
 

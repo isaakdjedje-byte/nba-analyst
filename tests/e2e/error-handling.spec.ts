@@ -9,9 +9,11 @@
 import { test, expect } from '../support/merged-fixtures';
 
 test.describe('Error Handling - P2 @p2 @e2e @error @resilience', () => {
-  test('[P1] should display 404 page for unknown routes', async ({ page }) => {
+  test('[P1] [1.5-ERR-001] should display 404 page for unknown routes', async ({ page }) => {
     // When visiting a non-existent route
+    const responsePromise = page.waitForResponse(resp => resp.status() === 404 || resp.status() === 200);
     await page.goto('/non-existent-page');
+    await responsePromise;
 
     // Then should show 404 error
     // Check either 404 heading or error state
@@ -21,9 +23,9 @@ test.describe('Error Handling - P2 @p2 @e2e @error @resilience', () => {
     await expect(page.getByText(/page not found|not exist/i)).toBeVisible();
   });
 
-  test('[P1] should handle API errors gracefully', async ({ page }) => {
+  test('[P1] [1.5-ERR-002] should handle API errors gracefully', async ({ page }) => {
     // Given: Mock API to return error
-    await page.route('**/api/decisions', (route) => {
+    await page.route('**/api/v1/decisions', (route) => {
       route.fulfill({
         status: 500,
         body: JSON.stringify({ error: 'Internal Server Error' }),
@@ -31,8 +33,9 @@ test.describe('Error Handling - P2 @p2 @e2e @error @resilience', () => {
     });
 
     // When: Visiting picks page
+    const responsePromise = page.waitForResponse('**/api/v1/decisions');
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // Then: Should show error state (not crash)
     const errorState = page.getByTestId('error-state');
@@ -41,15 +44,16 @@ test.describe('Error Handling - P2 @p2 @e2e @error @resilience', () => {
     await expect(errorState.or(errorText).first()).toBeVisible();
   });
 
-  test('[P2] should recover from network errors', async ({ page }) => {
+  test('[P2] [1.5-ERR-003] should recover from network errors', async ({ page }) => {
     // Given: Block API requests
     await page.route('**/api/**', (route) => {
       route.abort('failed');
     });
 
     // When: Visiting dashboard
+    const responsePromise = page.waitForResponse(resp => resp.status() >= 0); // Will abort
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await responsePromise.catch(() => {}); // Handle abort
 
     // Then: Should show appropriate error or fallback
     const errorState = page.getByTestId('error-state');
@@ -57,15 +61,16 @@ test.describe('Error Handling - P2 @p2 @e2e @error @resilience', () => {
     await expect(errorState.or(fallback).first()).toBeVisible();
   });
 
-  test('[P2] should handle slow loading states', async ({ page }) => {
+  test('[P2] [1.5-ERR-004] should handle slow loading states', async ({ page }) => {
     // Given: Slow API response
-    await page.route('**/api/decisions', async (route) => {
+    await page.route('**/api/v1/decisions', async (route) => {
       await route.continue();
     });
 
     // When: Visiting picks page
+    const responsePromise = page.waitForResponse('**/api/v1/decisions');
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // Then: Should show loading state
     const loading = page.getByTestId('picks-loading');
@@ -74,32 +79,38 @@ test.describe('Error Handling - P2 @p2 @e2e @error @resilience', () => {
     await expect(loading.or(list).first()).toBeVisible();
   });
 
-  test('[P2] should provide navigation from error pages', async ({ page }) => {
+  test('[P2] [1.5-ERR-005] should provide navigation from error pages', async ({ page }) => {
     // When visiting a 404 page
+    const responsePromise = page.waitForResponse(resp => resp.status() === 404 || resp.status() === 200);
     await page.goto('/non-existent-page');
+    await responsePromise;
 
     // Then should have link to home
-    await expect(page.getByTestId('home-link')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('home-link')).toBeVisible();
 
     // And: Clicking home should navigate
     await page.getByTestId('home-link').click();
     await expect(page).toHaveURL(/\/$/);
   });
 
-  test('[P2] should handle invalid decision IDs', async ({ page }) => {
+  test('[P2] [1.5-ERR-006] should handle invalid decision IDs', async ({ page }) => {
     // When: Visiting non-existent decision
+    const responsePromise = page.waitForResponse(resp => resp.status() === 404 || resp.status() === 200);
     await page.goto('/dashboard/picks/invalid-id-123');
+    await responsePromise;
 
     // Then: Should show error or redirect to 404
     const notFound = page.getByText(/not found|invalid|error/i);
     const picksList = page.getByTestId('picks-list');
-    await expect(notFound.or(picksList).first()).toBeVisible({ timeout: 5000 });
+    await expect(notFound.or(picksList).first()).toBeVisible();
   });
 
-  test('[P2] should validate required fields on client', async ({ page }) => {
+  test('[P3] [1.5-ERR-007] should validate required fields on client', async ({ page }) => {
     // When: Attempting form submission without required fields
     // (if there are forms in the app)
+    const responsePromise = page.waitForResponse(resp => resp.status() === 200);
     await page.goto('/dashboard/picks');
+    await responsePromise;
 
     // Then: Any forms should have validation
     const inputs = await page.locator('[required]').count();

@@ -316,7 +316,9 @@ describe('ThemeProvider', () => {
     // Simulate system preference change from light to dark
     currentMatches = true;
     if (mediaQueryListener) {
-      (mediaQueryListener as (event: { matches: boolean; media: string }) => void)({ matches: true, media: '' });
+      await act(async () => {
+        (mediaQueryListener as (event: { matches: boolean; media: string }) => void)({ matches: true, media: '' });
+      });
     }
 
     await waitFor(() => {

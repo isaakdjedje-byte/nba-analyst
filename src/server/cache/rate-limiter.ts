@@ -184,38 +184,41 @@ export async function checkRateLimitWithBoth(
   ip: string | undefined
 ): Promise<RateLimitResult> {
   const config = getEndpointConfig(endpoint);
-  
-  // Check user-based limit
-  if (userId) {
-    const userResult = await checkRateLimit(endpoint, userId, undefined, config.user);
-    if (!userResult.success) {
-      return userResult;
-    }
+
+  const userResult = userId
+    ? await checkRateLimit(endpoint, userId, undefined, config.user)
+    : null;
+
+  if (userResult && !userResult.success) {
+    return userResult;
   }
 
-  // Check IP-based limit
-  if (ip) {
-    const ipResult = await checkRateLimit(endpoint, undefined, ip, config.ip);
-    if (!ipResult.success) {
-      return ipResult;
-    }
+  const ipResult = ip
+    ? await checkRateLimit(endpoint, undefined, ip, config.ip)
+    : null;
+
+  if (ipResult && !ipResult.success) {
+    return ipResult;
   }
 
-  // Both passed - return the more restrictive result
-  if (userId && ip) {
-    const userResult = await checkRateLimit(endpoint, userId, undefined, config.user);
-    const ipResult = await checkRateLimit(endpoint, undefined, ip, config.ip);
-    
-    // Return the one with lower remaining
+  if (userResult && ipResult) {
     return userResult.remaining < ipResult.remaining ? userResult : ipResult;
   }
 
-  // Only one was checked
-  const result = userId 
-    ? await checkRateLimit(endpoint, userId, undefined, config.user)
-    : await checkRateLimit(endpoint, undefined, ip, config.ip);
-    
-  return result;
+  if (userResult) {
+    return userResult;
+  }
+
+  if (ipResult) {
+    return ipResult;
+  }
+
+  return {
+    success: true,
+    limit: config.user.maxRequests,
+    remaining: config.user.maxRequests,
+    resetTime: Date.now() + config.user.windowMs,
+  };
 }
 
 /**

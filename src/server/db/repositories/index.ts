@@ -14,3 +14,9 @@
 export * from './predictions-repository';
 export * from './policy-decisions-repository';
 export * from './daily-runs-repository';
+
+// Story 2.9: Re-export decision history types
+export type {
+  DecisionHistoryQueryParams,
+  DecisionHistoryResult,
+} from './policy-decisions-repository';

@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
 import { withB2BAuth, requireScope } from '../../_base';
+import { validateDecisionLookup } from '../../schemas';
 
 /**
  * Transform database decision to API response format with predictionInputs
@@ -82,9 +83,33 @@ export async function GET(
     // Get the ID from params
     const { id } = await params;
 
+    if (!id) {
+      return NextResponse.json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Decision ID is required',
+        },
+        meta: { traceId, timestamp },
+      }, { status: 400 });
+    }
+
     // Parse and validate query params (lookup type)
     const searchParams = request.nextUrl.searchParams;
-    const lookupType = searchParams.get('lookup') || 'id';
+    let lookupType: 'id' | 'traceId' = 'id';
+    try {
+      const validatedLookup = validateDecisionLookup({
+        lookup: searchParams.get('lookup') ?? undefined,
+      });
+      lookupType = validatedLookup.lookup;
+    } catch {
+      return NextResponse.json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid lookup value. Expected "id" or "traceId".',
+        },
+        meta: { traceId, timestamp },
+      }, { status: 400 });
+    }
 
     // Determine what field to search by
     const isTraceIdLookup = lookupType === 'traceId';

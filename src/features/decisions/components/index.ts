@@ -8,3 +8,4 @@ export { DecisionCardSkeleton, DecisionListSkeleton } from './DecisionCardSkelet
 export { DecisionList, DecisionStatusFilter } from './DecisionList';
 export { RationalePanel, GateIndicator } from './RationalePanel';
 export { StatusBadge } from './StatusBadge';
+export { BlockCausePanel } from './BlockCausePanel';

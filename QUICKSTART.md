@@ -106,7 +106,7 @@ test('scenario complet', async ({ api }) => {
 
   // Seeder via API
   await api.post('/api/users', user);
-  await api.post('/api/decisions', decision);
+  await api.post('/api/v1/decisions', decision);
 
   // Tester l'UI
   await page.goto('/dashboard/picks');

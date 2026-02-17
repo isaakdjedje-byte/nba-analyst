@@ -1,27 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/server/auth/auth-options';
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
+  void request;
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const token = authHeader.substring(7);
-  
-  if (!token.startsWith('token-')) {
-    return NextResponse.json(
-      { error: 'Invalid token' },
-      { status: 401 }
-    );
-  }
+  const user = session.user as { id: string; email: string; role: string };
 
   return NextResponse.json({
-    id: 'user-1',
-    email: 'test@example.com',
-    role: 'user',
+    id: user.id,
+    email: user.email,
+    role: user.role,
   });
 }

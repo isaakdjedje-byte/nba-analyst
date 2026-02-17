@@ -102,4 +102,4 @@ development_status:
   6-2-implementer-les-endpoints-d-explicabilite-pour-b2b: done  # ✅ Code review completed: 7 issues fixed (Task 3.1 unit tests added, ATDD tests unskipped, unused import removed, runtime validation added, schemas extended), build passing
   6-3-creer-le-systeme-de-profils-policy-configurables-b2b: done  # ✅ Code review completed: 6 issues fixed (UUID validation, 404 for history, reason field, changedBy, 204 header), all fixes applied 2026-02-16
   6-4-implementer-la-documentation-api-openapi-et-exemples: done  # Code review completed: 6 issues fixed (error examples, explain endpoint errors, DecisionStatus enum, OpenAPI 3.1.0, DELETE errors, E2E tests) 2026-02-16
-  epic-6-retrospective: optional
+  epic-6-retrospective: done  # ✅ Retrospective completed 2026-02-16 - 8 action items, 2 critical path items

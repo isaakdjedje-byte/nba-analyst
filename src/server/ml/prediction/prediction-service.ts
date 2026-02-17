@@ -121,6 +121,87 @@ export class PredictionService {
   }
 
   /**
+   * Normalize conference values to schema-compatible enum
+   */
+  private normalizeConference(value: string | null | undefined): 'East' | 'West' {
+    return value?.toLowerCase() === 'west' ? 'West' : 'East';
+  }
+
+  /**
+   * Normalize season type to schema-compatible enum
+   */
+  private normalizeSeasonType(value: string | null | undefined): 'Regular Season' | 'Pre Season' | 'Playoffs' | 'All Star' {
+    if (!value) return 'Regular Season';
+    const normalized = value.toLowerCase();
+    if (normalized.includes('playoff')) return 'Playoffs';
+    if (normalized.includes('pre')) return 'Pre Season';
+    if (normalized.includes('all')) return 'All Star';
+    return 'Regular Season';
+  }
+
+  /**
+   * Map persisted game + box score rows to ingestion box score schema
+   */
+  private toIngestionBoxScore(game: {
+    externalId: number;
+    homeTeamId: number;
+    awayTeamId: number;
+    boxScore: {
+      homePoints: number;
+      homeRebounds: number;
+      homeAssists: number;
+      homeSteals: number;
+      homeBlocks: number;
+      homeTurnovers: number;
+      homeFgPct: number;
+      home3pPct: number;
+      homeFtPct: number;
+      awayPoints: number;
+      awayRebounds: number;
+      awayAssists: number;
+      awaySteals: number;
+      awayBlocks: number;
+      awayTurnovers: number;
+      awayFgPct: number;
+      away3pPct: number;
+      awayFtPct: number;
+    } | null;
+  }): BoxScore | null {
+    const bs = game.boxScore;
+    if (!bs) return null;
+
+    return {
+      gameId: game.externalId,
+      homeTeam: {
+        teamId: game.homeTeamId,
+        points: bs.homePoints,
+        rebounds: bs.homeRebounds,
+        assists: bs.homeAssists,
+        steals: bs.homeSteals,
+        blocks: bs.homeBlocks,
+        turnovers: bs.homeTurnovers,
+        fieldGoalPercentage: bs.homeFgPct,
+        threePointPercentage: bs.home3pPct,
+        freeThrowPercentage: bs.homeFtPct,
+      },
+      awayTeam: {
+        teamId: game.awayTeamId,
+        points: bs.awayPoints,
+        rebounds: bs.awayRebounds,
+        assists: bs.awayAssists,
+        steals: bs.awaySteals,
+        blocks: bs.awayBlocks,
+        turnovers: bs.awayTurnovers,
+        fieldGoalPercentage: bs.awayFgPct,
+        threePointPercentage: bs.away3pPct,
+        freeThrowPercentage: bs.awayFtPct,
+      },
+      homePlayers: [],
+      awayPlayers: [],
+    };
+  }
+
+  /**
    * Fetch historical box scores for a team
    */
   private async fetchTeamBoxScores(
@@ -128,19 +209,23 @@ export class PredictionService {
     beforeDate: Date,
     limit: number = 20
   ): Promise<BoxScore[]> {
-    // Query from database
-    // In production, this would query from a box_scores table
-    // For now, return empty array - would be populated by data ingestion
-    
-    const boxScores = await prisma.$queryRaw<BoxScore[]>`
-      SELECT * FROM box_scores 
-      WHERE (home_team_id = ${teamId} OR away_team_id = ${teamId})
-      AND game_date < ${beforeDate}
-      ORDER BY game_date DESC
-      LIMIT ${limit}
-    `;
+    const games = await prisma.game.findMany({
+      where: {
+        OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+        gameDate: { lt: beforeDate },
+        status: 'completed',
+        boxScore: { isNot: null },
+      },
+      include: {
+        boxScore: true,
+      },
+      orderBy: { gameDate: 'desc' },
+      take: limit,
+    });
 
-    return boxScores || [];
+    return games
+      .map((game) => this.toIngestionBoxScore(game))
+      .filter((boxScore): boxScore is BoxScore => boxScore !== null);
   }
 
   /**
@@ -151,18 +236,45 @@ export class PredictionService {
     teamId2: number,
     limit: number = 5
   ): Promise<Game[]> {
-    const games = await prisma.$queryRaw<Game[]>`
-      SELECT * FROM games 
-      WHERE (
-        (home_team_id = ${teamId1} AND away_team_id = ${teamId2})
-        OR (home_team_id = ${teamId2} AND away_team_id = ${teamId1})
-      )
-      AND status = 'completed'
-      ORDER BY date DESC
-      LIMIT ${limit}
-    `;
+    const games = await prisma.game.findMany({
+      where: {
+        OR: [
+          { homeTeamId: teamId1, awayTeamId: teamId2 },
+          { homeTeamId: teamId2, awayTeamId: teamId1 },
+        ],
+        status: 'completed',
+      },
+      orderBy: { gameDate: 'desc' },
+      take: limit,
+    });
 
-    return games || [];
+    return games.map((game) => ({
+      id: game.externalId,
+      season: game.season,
+      seasonType: this.normalizeSeasonType(game.seasonType),
+      status: 'completed',
+      date: game.gameDate.toISOString(),
+      homeTeam: {
+        id: game.homeTeamId,
+        name: game.homeTeamName,
+        city: '',
+        abbreviation: game.homeTeamAbbreviation,
+        conference: this.normalizeConference(game.homeTeamConference),
+        division: '',
+      },
+      awayTeam: {
+        id: game.awayTeamId,
+        name: game.awayTeamName,
+        city: '',
+        abbreviation: game.awayTeamAbbreviation,
+        conference: this.normalizeConference(game.awayTeamConference),
+        division: '',
+      },
+      homeScore: game.homeScore ?? undefined,
+      awayScore: game.awayScore ?? undefined,
+      arena: game.arena ?? undefined,
+      attendance: game.attendance ?? undefined,
+    }));
   }
 
   /**

@@ -9,36 +9,41 @@
 import { test, expect } from '../support/merged-fixtures';
 
 test.describe('Home Page - P1 @p1 @e2e @home @navigation', () => {
-  test('[P0] should display home page', async ({ page }) => {
+  test('[P0] [1.1-HOME-001] should display home page @smoke', async ({ page }) => {
     // When visiting the home page
+    const responsePromise = page.waitForResponse(resp => resp.url() === '/' || resp.status() === 200);
     await page.goto('/');
+    await responsePromise;
 
     // Then the page should load successfully
     await expect(page).toHaveURL('/');
     await expect(page.getByRole('heading', { name: /NBA Analyst/i })).toBeVisible();
   });
 
-  test('[P0] should navigate to dashboard from home', async ({ page }) => {
+  test('[P0] [1.1-HOME-002] should navigate to dashboard from home @smoke', async ({ page }) => {
     // Given the user is on the home page
+    const homeResponse = page.waitForResponse(resp => resp.url() === '/' || resp.status() === 200);
     await page.goto('/');
+    await homeResponse;
     
-    // Wait for navigation to be ready
-    await page.waitForSelector('[data-testid="nav-dashboard"]', { timeout: 10000 });
-
-    // When clicking the dashboard link
+    // Wait for navigation to be ready - use network response instead of hard timeout
+    const navResponse = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.getByTestId('nav-dashboard').click();
+    await navResponse;
 
     // Then should navigate to dashboard
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByTestId('picks-list')).toBeVisible();
   });
 
-  test('[P1] should display navigation menu', async ({ page }) => {
+  test('[P1] [1.1-HOME-003] should display navigation menu', async ({ page }) => {
     // Given the user is on the home page
+    const responsePromise = page.waitForResponse(resp => resp.url() === '/' || resp.status() === 200);
     await page.goto('/');
+    await responsePromise;
     
-    // Wait for navigation to be ready
-    await page.waitForSelector('[data-testid="main-navigation"]', { timeout: 10000 });
+    // Wait for navigation to be ready - use network response
+    await page.waitForResponse(resp => resp.status() === 200);
 
     // Then navigation elements should be visible
     await expect(page.getByTestId('main-navigation')).toBeVisible();
@@ -48,26 +53,30 @@ test.describe('Home Page - P1 @p1 @e2e @home @navigation', () => {
     await expect(page.getByTestId('nav-dashboard')).toBeVisible();
   });
 
-  test('[P1] should have working page title', async ({ page }) => {
+  test('[P1] [1.1-HOME-004] should have working page title', async ({ page }) => {
     // When visiting the home page
+    const responsePromise = page.waitForResponse(resp => resp.url() === '/' || resp.status() === 200);
     await page.goto('/');
+    await responsePromise;
 
     // Then page title should be set
     await expect(page).toHaveTitle(/NBA Analyst/i);
   });
 
-  test('[P2] should be responsive on mobile', async ({ page }) => {
+  test('[P2] [1.1-HOME-005] should be responsive on mobile', async ({ page }) => {
     // Given a mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
 
     // When visiting the home page
+    const responsePromise = page.waitForResponse(resp => resp.url() === '/' || resp.status() === 200);
     await page.goto('/');
+    await responsePromise;
 
     // Then content should be visible
     await expect(page.getByRole('heading', { name: /NBA Analyst/i })).toBeVisible();
   });
 
-  test('[P2] should load without console errors', async ({ page }) => {
+  test('[P2] [1.1-HOME-006] should load without console errors', async ({ page }) => {
     // Collect console errors
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
@@ -77,8 +86,12 @@ test.describe('Home Page - P1 @p1 @e2e @home @navigation', () => {
     });
 
     // When visiting the home page
+    const responsePromise = page.waitForResponse(resp => resp.status() === 200);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
+
+    // Wait for main content to be visible (deterministic wait instead of networkidle)
+    await expect(page.getByRole('heading', { name: /NBA Analyst/i })).toBeVisible();
 
     // Then no console errors should exist
     expect(consoleErrors).toHaveLength(0);

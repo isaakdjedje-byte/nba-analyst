@@ -179,8 +179,8 @@ All dates are in ISO 8601 UTC format (YYYY-MM-DDTHH:mm:ss.SSSZ).
         },
         DecisionStatus: {
           type: 'string',
-          enum: ['pick', 'no_bet', 'hard_stop'],
-          example: 'pick',
+          enum: ['Pick', 'No-Bet', 'Hard-Stop'],
+          example: 'Pick',
           description: 'Status of the betting decision',
         },
         Decision: {

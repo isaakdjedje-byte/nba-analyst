@@ -9,8 +9,7 @@
  * - AC2: Structured and machine-readable response
  * - AC3: TraceId included for audit linkage
  * 
- * TDD RED PHASE: These tests will fail until the feature is implemented.
- * Use test.skip() to document intentional failure.
+ * These tests validate the implementation is correct.
  */
 
 import { test, expect } from '@playwright/test';
@@ -286,7 +285,7 @@ test.describe('AC2: Structured and Machine-Readable Response', () => {
     expect(body.meta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/);
   });
 
-  test.skip('[P1] should include match information', async ({ request }) => {
+  test('[P1] should include match information', async ({ request }) => {
     // Test: AC2 - Response should include match context
     
     const decisionId = faker.string.uuid();
@@ -347,7 +346,7 @@ test.describe('AC3: TraceId for Audit Linkage', () => {
     expect(body.meta.traceId).toBeDefined();
   });
 
-  test.skip('[P1] should allow lookup by traceId', async ({ request }) => {
+  test('[P1] should allow lookup by traceId', async ({ request }) => {
     // Test: AC3 - Should be able to look up explanation by traceId
     
     const traceId = faker.string.uuid();
@@ -425,7 +424,7 @@ test.describe('Error Handling', () => {
 
 test.describe('Response Completeness', () => {
   
-  test.skip('[P1] should include all required explanation fields', async ({ request }) => {
+  test('[P1] should include all required explanation fields', async ({ request }) => {
     // Test: Response should include all fields required by AC1, AC2, AC3
     
     const decisionId = faker.string.uuid();
@@ -454,7 +453,7 @@ test.describe('Response Completeness', () => {
     // AC3 is covered by meta.traceId
   });
 
-  test.skip('[P1] should include decision ID and match ID', async ({ request }) => {
+  test('[P1] should include decision ID and match ID', async ({ request }) => {
     // Test: Response should identify the decision
     
     const decisionId = faker.string.uuid();

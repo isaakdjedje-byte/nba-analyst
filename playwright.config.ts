@@ -130,6 +130,13 @@ const getProjects = () => {
 
 export default defineConfig({
   testDir: './tests',
+  testMatch: /(api|e2e)\/.*\.(spec|test)\.(ts|js)$/, // Only run API and E2E tests (not component/unit)
+  testIgnore: [
+    '**/unit/**',
+    '**/integration/**',
+    '**/component/**', // Component tests need separate config
+    '**/*.test.ts', // Ignore Vitest tests
+  ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

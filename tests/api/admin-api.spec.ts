@@ -7,13 +7,26 @@
  * Test IDs: ADMIN-API-001 through ADMIN-API-010
  * 
  * SKIPPED: Epic 4 not yet implemented
- * Re-enable when Epic 4 (Performance, logs et replay d'audit) is active
+ * 
+ * @epic 4
+ * @tracked false
+ * @re-enable When Epic 4 starts - verify admin endpoints exist first
+ * @priority P0 (security-critical)
+ * 
+ * Coverage:
+ * - User listing (GET /api/v1/admin/users)
+ * - User management (POST/DELETE /api/v1/admin/users)
+ * - Role assignment (PUT /api/v1/admin/users/:id/role)
+ * - RBAC enforcement (non-admin cannot access)
+ * 
+ * TODO: [Epic-4] Re-enable these tests when admin API is implemented
+ * TODO: [Epic-4] Add tests for audit logging of admin actions
  */
 
 import { test, expect } from '@playwright/test';
-import { createUser, createAdminUser } from '../support/factories';
+import type { APIRequestContext } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000';
 
 test.describe.skip('Admin API Tests @api @admin @rbac @security @epic4', () => {
   // ==========================================

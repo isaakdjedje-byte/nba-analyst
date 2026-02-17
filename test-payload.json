@@ -1,0 +1,16 @@
+{
+  "model_type": "2025",
+  "features": {
+    "elo_diff": 245,
+    "elo_diff_norm": 0.806,
+    "home_last10_wins": 0.7,
+    "away_last10_wins": 0.5,
+    "spread_num": -6.5,
+    "over_under": 228.5,
+    "ml_home_prob": 0.72,
+    "ml_away_prob": 0.28,
+    "rest_days_home": 2,
+    "rest_days_away": 2,
+    "season_norm": 0.87
+  }
+}

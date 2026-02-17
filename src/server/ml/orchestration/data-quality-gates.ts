@@ -220,6 +220,9 @@ export function createDataQualityGates(
   return new DataQualityGatesImpl(config, logger);
 }
 
+// Re-export DataQualityAssessment for convenience
+export type { DataQualityAssessment } from './fallback-chain';
+
 /**
  * Mock ModelRegistry for testing
  */

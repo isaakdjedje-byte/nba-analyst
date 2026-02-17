@@ -1,15 +1,11 @@
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
+/**
+ * Home Page
+ * Redirects authenticated users to dashboard picks view
+ * Unauthenticated users will be redirected to login by middleware
+ */
 export default function Home() {
-  return (
-    <main style={{ padding: '2rem' }}>
-      <h1>NBA Analyst</h1>
-      <p>AI-powered sports betting decision platform</p>
-      <nav style={{ marginTop: '2rem' }}>
-        <Link href="/dashboard/picks" data-testid="picks-link">
-          View Picks
-        </Link>
-      </nav>
-    </main>
-  );
+  // Redirect to picks (default dashboard view)
+  redirect('/dashboard/picks');
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   CircuitBreaker,
   CircuitBreakerOpenError,
@@ -9,12 +9,20 @@ describe('Circuit Breaker', () => {
   let breaker: CircuitBreaker;
 
   beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     breaker = new CircuitBreaker('test-breaker', {
       failureThreshold: 3,
       resetTimeout: 1000,
       halfOpenMaxCalls: 2,
       successThreshold: 2,
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('initial state', () => {

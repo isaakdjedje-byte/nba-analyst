@@ -8,12 +8,14 @@ import { createDecision, createMatch } from '../support/factories';
 
 test.describe('Dashboard Picks', () => {
   test.beforeEach(async ({ page }) => {
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
+    await responsePromise;
     // Wait for either loading or list to appear
-    await expect(page.getByTestId('picks-list')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('picks-list')).toBeVisible();
   });
 
-  test('should display picks list', async ({ page }) => {
+  test('[P0] [1.2-DP-001] should display picks list', async ({ page }) => {
     await expect(page.getByTestId('picks-list')).toBeVisible();
     // Verify picks are loaded (either default picks or empty state)
     const hasPicks = await page.getByTestId('pick-card').count() > 0;
@@ -21,7 +23,7 @@ test.describe('Dashboard Picks', () => {
     expect(hasPicks || hasEmptyState).toBe(true);
   });
 
-  test('should filter picks by date', async ({ page }) => {
+  test('[P1] [1.2-DP-002] should filter picks by date', async ({ page }) => {
     // Click on Today filter button
     await page.getByTestId('date-today').click();
     
@@ -30,23 +32,20 @@ test.describe('Dashboard Picks', () => {
     await expect(page.getByTestId('filter-applied')).toContainText('Today');
   });
 
-  test('should view pick details', async ({ page }) => {
+  test('[P1] [1.2-DP-003] should view pick details', async ({ page }) => {
     // Check if any pick cards exist
     const firstPick = page.getByTestId('pick-card').first();
     const count = await firstPick.count();
     
-    // Skip test gracefully if no picks available
-    if (count === 0) {
-      console.log('Skipping: No picks available to view details');
-      return;
-    }
+    // Ensure we have picks to test
+    expect(count).toBeGreaterThan(0);
     
     // Click on the first pick card
     await expect(firstPick).toBeVisible();
     await firstPick.click();
     
     // Wait for and verify modal appears
-    await expect(page.getByTestId('pick-detail-modal')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId('pick-detail-modal')).toBeVisible();
     await expect(page.getByTestId('pick-rationale')).toBeVisible();
     await expect(page.getByTestId('pick-confidence')).toBeVisible();
     
@@ -57,9 +56,11 @@ test.describe('Dashboard Picks', () => {
     await expect(page.getByTestId('pick-detail-modal')).not.toBeVisible();
   });
 
-  test('should show loading state on initial load', async ({ page }) => {
+  test('[P2] [1.2-DP-004] should show loading state on initial load', async ({ page }) => {
     // Navigate to page to trigger loading
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
+    await responsePromise;
     
     // Check if loading spinner exists (it might be too fast to catch)
     const loading = page.getByTestId('picks-loading');
@@ -69,12 +70,12 @@ test.describe('Dashboard Picks', () => {
     await expect(loading.or(list)).toBeVisible();
     
     // Eventually the list should be visible
-    await expect(list).toBeVisible({ timeout: 10000 });
+    await expect(list).toBeVisible();
   });
 
-  test('should handle empty state when no picks available', async ({ page }) => {
+  test('[P2] [1.2-DP-005] should handle empty state when no picks available', async ({ page }) => {
     // Mock API to return empty decisions
-    await page.route('**/api/decisions', async (route) => {
+    await page.route('**/api/v1/decisions', async (route) => {
       await route.fulfill({
         status: 200,
         body: JSON.stringify({ decisions: [] }),
@@ -82,12 +83,10 @@ test.describe('Dashboard Picks', () => {
     });
     
     // Navigate to trigger the mock
+    const responsePromise = page.waitForResponse('**/api/v1/decisions');
     await page.goto('/dashboard/picks');
-    
-    // Wait for response and network idle
-    await page.waitForResponse(resp => resp.url().includes('/api/decisions')).catch(() => {});
-    await page.waitForLoadState('networkidle');
-    
+    await responsePromise;
+
     // Check if empty state is shown (or default picks if mock didn't work)
     const hasEmptyState = await page.getByTestId('picks-empty').isVisible().catch(() => false);
     const hasPicks = await page.getByTestId('pick-card').count() > 0;
@@ -98,7 +97,7 @@ test.describe('Dashboard Picks', () => {
 });
 
 test.describe('Dashboard Picks - API Integration', () => {
-  test('should create pick via API and display in UI', async ({ page, request }) => {
+  test('[P1] [1.2-DP-006] should create pick via API and display in UI', async ({ page, request }) => {
     // Create a decision via API
     const match = createMatch();
     const decision = createDecision({ 
@@ -110,7 +109,7 @@ test.describe('Dashboard Picks - API Integration', () => {
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     
     // Create the decision
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -119,12 +118,13 @@ test.describe('Dashboard Picks - API Integration', () => {
     const created = await createResponse.json();
     
     // Navigate to picks page
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
-    // Trigger manual refresh and wait for network idle
+    // Trigger manual refresh and wait for network response
     await page.getByTestId('refresh-btn').click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForResponse(resp => resp.status() === 200);
     
     // The new pick should be visible (either with specific ID or in the list)
     const pickElement = page.getByTestId(`pick-${created.id}`);
@@ -135,12 +135,13 @@ test.describe('Dashboard Picks - API Integration', () => {
     expect(pickExists || hasAnyPicks).toBe(true);
     
     // Cleanup
-    await request.delete(`${baseUrl}/api/decisions/${created.id}`).catch(() => {});
+    await request.delete(`${baseUrl}/api/v1/decisions/${created.id}`).catch(() => {});
   });
 
-  test('should display auto-refresh indicator', async ({ page }) => {
+  test('[P2] [1.2-DP-007] should display auto-refresh indicator', async ({ page }) => {
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
-    await page.waitForSelector('[data-testid="picks-list"]', { timeout: 5000 });
+    await responsePromise;
     
     // The page should show picks list
     await expect(page.getByTestId('picks-list')).toBeVisible();

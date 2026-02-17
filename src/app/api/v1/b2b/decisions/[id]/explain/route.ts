@@ -36,7 +36,7 @@ function transformDecisionExplanation(decision: {
   hardStopReason: string | null;
   recommendedPick: string | null;
   modelVersion: string;
-  predictionInputs: Record<string, unknown> | null;
+  predictionInputs: unknown;
   matchDate: Date;
   homeTeam: string;
   awayTeam: string;
@@ -113,16 +113,24 @@ function mapStatus(status: string): 'Pick' | 'No-Bet' | 'Hard-Stop' {
 }
 
 /**
- * Extract data signals from prediction inputs
+ * Extract data signals from prediction inputs with runtime validation
  */
 function extractDataSignals(
-  predictionInputs: Record<string, unknown> | null,
+  predictionInputs: unknown,
   modelVersion: string
 ): Record<string, unknown> {
-  if (!predictionInputs) {
+  // Validate predictionInputs at runtime
+  if (predictionInputs === null || predictionInputs === undefined) {
     return {
       modelVersion,
       note: 'No prediction inputs available',
+    };
+  }
+
+  if (typeof predictionInputs !== 'object') {
+    return {
+      modelVersion,
+      note: 'Invalid prediction inputs format',
     };
   }
 
@@ -163,15 +171,7 @@ export async function GET(
     // Get the ID from params
     const { id } = await params;
 
-    // Parse and validate query params (lookup type)
-    const searchParams = request.nextUrl.searchParams;
-    const lookupType = searchParams.get('lookup') || 'id';
-
-    // Determine what field to search by
-    const isTraceIdLookup = lookupType === 'traceId';
-
-    // Validate ID format for ID lookup (not required for traceId which can be any string)
-    if (!isTraceIdLookup && !id) {
+    if (!id) {
       return NextResponse.json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -180,6 +180,27 @@ export async function GET(
         meta: { traceId, timestamp },
       }, { status: 400 });
     }
+
+    // Parse and validate query params (lookup type)
+    const searchParams = request.nextUrl.searchParams;
+    let lookupType: 'id' | 'traceId' = 'id';
+    try {
+      const validatedLookup = validateDecisionLookup({
+        lookup: searchParams.get('lookup') ?? undefined,
+      });
+      lookupType = validatedLookup.lookup;
+    } catch {
+      return NextResponse.json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid lookup value. Expected "id" or "traceId".',
+        },
+        meta: { traceId, timestamp },
+      }, { status: 400 });
+    }
+
+    // Determine what field to search by
+    const isTraceIdLookup = lookupType === 'traceId';
 
     // Fetch decision with all fields needed for explanation
     const decision = await prisma.policyDecision.findFirst({
@@ -215,7 +236,7 @@ export async function GET(
       hardStopReason: decision.hardStopReason,
       recommendedPick: decision.recommendedPick,
       modelVersion: decision.modelVersion,
-      predictionInputs: decision.predictionInputs as Record<string, unknown> | null,
+      predictionInputs: decision.predictionInputs as unknown,
       matchDate: decision.matchDate,
       homeTeam: decision.homeTeam,
       awayTeam: decision.awayTeam,

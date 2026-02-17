@@ -73,22 +73,17 @@ export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   "/register": [],
   "/api/auth": [],
   "/api/health": [],
+  "/dashboard": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
+  "/dashboard/picks": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/dashboard/no-bet": [],
-  "/no-bet": [],
-  "/performance": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  "/logs": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  "/api/decisions": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  "/api/logs": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  
-  // Support+ routes (decision replay only)
-  "/decision/[id]/replay": [UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  "/decision/[id]/investigate": [UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  
-  // Ops+ routes (policy configuration)
-  "/policy": [UserRole.OPS, UserRole.ADMIN],
-  "/policy/config": [UserRole.OPS, UserRole.ADMIN],
-  "/api/policy": [UserRole.OPS, UserRole.ADMIN],
-  
+  "/dashboard/performance": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
+  "/dashboard/logs": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
+  "/dashboard/investigation": [UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
+  "/dashboard/policy-config": [UserRole.OPS, UserRole.ADMIN],
+  "/api/v1/decisions": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
+  "/api/v1/policy": [UserRole.OPS, UserRole.ADMIN],
+  "/api/v1/runs": [UserRole.OPS, UserRole.ADMIN],
+
   // Admin only routes
   "/admin": [UserRole.ADMIN],
   "/admin/users": [UserRole.ADMIN],

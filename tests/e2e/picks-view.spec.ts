@@ -14,7 +14,7 @@ test.describe('Picks View @e2e @epic3', () => {
     await page.click('[data-testid="login-button"]');
     
     // Wait for navigation to complete
-    await page.waitForURL('/picks');
+    await page.waitForURL('/dashboard/picks');
   });
 
   test('should display picks page with title', async ({ page }) => {
@@ -24,7 +24,7 @@ test.describe('Picks View @e2e @epic3', () => {
 
   test('should show loading skeleton initially', async ({ page }) => {
     // Navigate to picks page
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Check for skeleton loading state
     await expect(page.locator('[data-testid="decision-skeleton"]')).toBeVisible();
@@ -42,7 +42,7 @@ test.describe('Picks View @e2e @epic3', () => {
   test('should show empty state when no decisions', async ({ page }) => {
     // This test would need to mock API response or run at a time when no decisions exist
     // For now, we verify the empty state UI is present
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // If empty state appears
     const emptyState = page.locator('text=Aucune décision disponible');
@@ -61,7 +61,7 @@ test.describe('Picks View @e2e @epic3', () => {
       });
     });
     
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Should show error message
     await expect(page.locator('text=Erreur de chargement')).toBeVisible();
@@ -72,7 +72,7 @@ test.describe('Picks View @e2e @epic3', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
     
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Wait for content
     await page.waitForTimeout(500);
@@ -89,7 +89,7 @@ test.describe('Picks View @e2e @epic3', () => {
   test('p95 load time should be <= 2.0s', async ({ page }) => {
     const startTime = Date.now();
     
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     await page.waitForSelector('[data-testid="decision-list"]', { timeout: 5000 });
     
     const loadTime = Date.now() - startTime;

@@ -12,10 +12,12 @@ import { createDecision, createMatch } from '../support/factories';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 test.describe('Critical User Journey - P0 @p0 @e2e @journey @critical', () => {
-  
-  test('[P0] should complete login to picks journey', async ({ page }) => {
+   
+  test('[P0] [1.1-JRN-001] should complete login to picks journey', async ({ page }) => {
     // Given: User is on login page
+    const loginResponse = page.waitForResponse(resp => resp.url().includes('/api/auth') || resp.status() === 200);
     await page.goto('/login');
+    await loginResponse;
     
     // When: User logs in with valid credentials
     await page.getByLabel(/email/i).fill('test@example.com');
@@ -35,10 +37,11 @@ test.describe('Critical User Journey - P0 @p0 @e2e @journey @critical', () => {
     expect(hasHeading || hasContent).toBe(true);
   });
 
-  test('[P0] should view dashboard sections', async ({ page }) => {
+  test('[P0] [1.1-JRN-002] should view dashboard sections', async ({ page }) => {
     // Given: Navigate directly to picks (bypass login for this test)
+    const picksResponse = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await picksResponse;
     
     // Then: Should see picks page content
     const picksListVisible = await page.getByTestId('picks-list').isVisible().catch(() => false);
@@ -46,27 +49,29 @@ test.describe('Critical User Journey - P0 @p0 @e2e @journey @critical', () => {
     expect(picksListVisible || hasContent).toBe(true);
     
     // When: Navigate to No-Bet
+    const noBetResponse = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/no-bet');
-    await page.waitForLoadState('networkidle');
+    await noBetResponse;
     const noBetVisible = await page.getByTestId('no-bet-list').or(page.getByTestId('no-bet-empty')).isVisible().catch(() => false);
     const noBetContent = await page.locator('main').isVisible().catch(() => false);
     expect(noBetVisible || noBetContent).toBe(true);
     
     // When: Navigate to Logs
+    const logsResponse = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await logsResponse;
     const logsVisible = await page.getByTestId('logs-timeline').or(page.getByTestId('logs-empty')).isVisible().catch(() => false);
     const logsContent = await page.locator('main').isVisible().catch(() => false);
     expect(logsVisible || logsContent).toBe(true);
   });
 
-  test('[P1] should handle decision workflow end-to-end', async ({ page, request }) => {
+  test('[P1] [1.1-JRN-003] should handle decision workflow end-to-end', async ({ page, request }) => {
     // Given: A match and decision exist
     const match = createMatch();
     const decision = createDecision({ matchId: match.id, status: 'Pick' });
 
     // Create decision via API
-    const response = await request.post(`${BASE_URL}/api/decisions`, {
+    const response = await request.post(`${BASE_URL}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -75,31 +80,33 @@ test.describe('Critical User Journey - P0 @p0 @e2e @journey @critical', () => {
     expect([200, 201]).toContain(response.status());
 
     // When: User views picks page
+    const picksResponse = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await picksResponse;
 
     // Then: Page should load successfully
     const contentVisible = await page.locator('main').isVisible().catch(() => false);
     expect(contentVisible).toBe(true);
   });
 
-  test('[P1] should navigate using navigation links if present', async ({ page }) => {
+  test('[P1] [1.1-JRN-004] should navigate using navigation links if present', async ({ page }) => {
     // Given: User is on picks page
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
+    
+    // Wait for navigation element to be present
+    await expect(page.locator('[data-testid]').first()).toBeVisible();
     
     // Check if navigation elements exist
     const navNoBet = page.getByTestId('nav-no-bet');
-    const hasNavNoBet = await navNoBet.count() > 0;
+    await expect(navNoBet).toBeVisible();
     
-    if (hasNavNoBet) {
-      // When: Click navigation link
-      await navNoBet.click();
-      await page.waitForLoadState('networkidle');
-      
-      // Then: Should navigate to no-bet page
-      await expect(page).toHaveURL(/\/dashboard\/no-bet/);
-    }
-    // If navigation doesn't exist, test passes (UI may be different)
+    // When: Click navigation link
+    await navNoBet.click();
+    await page.waitForResponse(resp => resp.status() === 200);
+    
+    // Then: Should navigate to no-bet page
+    await expect(page).toHaveURL(/\/dashboard\/dashboard/no-bet/);
   });
 });

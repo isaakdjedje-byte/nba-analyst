@@ -163,7 +163,7 @@ test('should create pick via API', async ({ apiRequest }) => {
 
   const { status, body } = await apiRequest({
     method: 'POST',
-    path: '/api/decisions',
+    path: '/api/v1/decisions',
     body: decision,
   });
 

@@ -1,0 +1,16 @@
+{
+  "id": "espn-data-schema-1771164129240",
+  "provider": "espn",
+  "schemaName": "data-schema",
+  "version": "1.0.0",
+  "createdAt": "2026-02-15T14:02:09.240Z",
+  "fields": [
+    {
+      "name": "root",
+      "type": "array",
+      "required": true,
+      "nullable": false
+    }
+  ],
+  "hash": "6e882b1f"
+}

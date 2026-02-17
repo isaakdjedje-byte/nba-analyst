@@ -20,7 +20,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC1: Dark mode toggle is accessible from dashboard @a11y @p1', async ({ page }) => {
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Wait for the page to load
     await page.waitForSelector('[data-testid="dashboard-header"]');
@@ -43,7 +43,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC1: Toggle indicates current mode (sun in dark, moon in light) @p1', async ({ page }) => {
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     const themeToggle = page.locator('[data-testid="theme-toggle"]').first();
     
@@ -60,7 +60,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC5: Dark mode preference persists across reloads @p1', async ({ page }) => {
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     const themeToggle = page.locator('[data-testid="theme-toggle"]').first();
     
@@ -87,7 +87,7 @@ test.describe('Dark Mode', () => {
     // Note: System preference emulation varies by browser
     // This test sets up a scenario where localStorage is empty
     
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Clear any existing preference
     await page.evaluate(() => localStorage.removeItem('theme'));
@@ -106,7 +106,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC7: Theme transition completes within 300ms @p1', async ({ page }) => {
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     const themeToggle = page.locator('[data-testid="theme-toggle"]').first();
     
@@ -126,7 +126,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC8: Components display correctly in dark mode @p1 @a11y', async ({ page }) => {
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Enable dark mode
     const themeToggle = page.locator('[data-testid="theme-toggle"]').first();
@@ -147,7 +147,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC8: Semantic colors preserved in dark mode @p1', async ({ page }) => {
-    await page.goto('/picks');
+    await page.goto('/dashboard/picks');
     
     // Enable dark mode
     const themeToggle = page.locator('[data-testid="theme-toggle"]').first();
@@ -162,7 +162,7 @@ test.describe('Dark Mode', () => {
   });
 
   test('AC1: Theme toggle is present on all dashboard views @p1', async ({ page }) => {
-    const views = ['/picks', '/no-bet', '/performance', '/logs'];
+    const views = ['/dashboard/picks', '/dashboard/no-bet', '/dashboard/performance', '/dashboard/logs'];
     
     for (const view of views) {
       await page.goto(view);

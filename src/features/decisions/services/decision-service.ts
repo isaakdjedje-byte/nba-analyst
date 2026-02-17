@@ -6,7 +6,15 @@
 
 import type { DecisionsResponse, ApiError } from '../types';
 
-const API_BASE = '/api/v1';
+// Get base URL - works in both client and server
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Browser environment
+    return '/api/v1';
+  }
+  // Server environment
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+};
 
 /**
  * Fetch today's decisions
@@ -23,24 +31,30 @@ export async function fetchDecisions(
   if (status) params.append('status', status);
 
   const queryString = params.toString();
-  const url = `${API_BASE}/decisions${queryString ? `?${queryString}` : ''}`;
+  const url = `${getBaseUrl()}/decisions${queryString ? `?${queryString}` : ''}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store',
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Important: send cookies for auth
+      cache: 'no-store',
+    });
 
-  const data = await response.json();
+    const data = await response.json();
 
-  if (!response.ok) {
-    const error = data as ApiError;
-    throw new Error(error.error?.message || 'Failed to fetch decisions');
+    if (!response.ok) {
+      const error = data as ApiError;
+      const errorMessage = error.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
+    return data as DecisionsResponse;
+  } catch (error) {
+    throw error;
   }
-
-  return data as DecisionsResponse;
 }
 
 /**

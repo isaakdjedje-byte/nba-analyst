@@ -38,6 +38,10 @@ import { executeDailyRunPipeline } from '../daily-run-orchestrator';
 
 describe('Daily Run Scheduler', () => {
   beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.clearAllMocks();
   });
 

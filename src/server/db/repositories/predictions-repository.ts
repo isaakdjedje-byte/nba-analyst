@@ -40,6 +40,14 @@ interface PrismaPredictionUpdateInput {
   status?: PredictionStatus;
 }
 
+function getErrorCode(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' ? code : '';
+  }
+  return '';
+}
+
 // Repository Error Class
 export class RepositoryError extends Error {
   constructor(
@@ -170,20 +178,21 @@ export async function createPrediction(
     };
 
     const prediction = await prisma.prediction.create({
-      data,
+      data: data as unknown as Parameters<typeof prisma.prediction.create>[0]['data'],
       select: predictionSelect,
     });
 
-    return prediction as PredictionWithRelations;
-  } catch (error: any) {
-    if (error.code === 'P2002') {
+    return prediction as unknown as PredictionWithRelations;
+  } catch (error: unknown) {
+    const errorCode = getErrorCode(error);
+    if (errorCode === 'P2002') {
       throw new RepositoryError(
         'Prediction already exists for this match',
         'UNIQUE_CONSTRAINT_VIOLATION',
         error
       );
     }
-    if (error.code === 'P2003') {
+    if (errorCode === 'P2003') {
       throw new RepositoryError(
         'Invalid foreign key reference',
         'FOREIGN_KEY_VIOLATION',
@@ -212,7 +221,7 @@ export async function getPredictionById(
     });
 
     return prediction as PredictionWithRelations | null;
-  } catch (error: any) {
+  } catch (error: unknown) {
     throw new RepositoryError(
       'Failed to fetch prediction',
       'DATABASE_ERROR',
@@ -236,7 +245,7 @@ export async function getPredictionsByRunId(
     });
 
     return predictions as PredictionWithRelations[];
-  } catch (error: any) {
+  } catch (error: unknown) {
     throw new RepositoryError(
       'Failed to fetch predictions by run ID',
       'DATABASE_ERROR',
@@ -260,7 +269,7 @@ export async function getPredictionsByMatchId(
     });
 
     return predictions as PredictionWithRelations[];
-  } catch (error: any) {
+  } catch (error: unknown) {
     throw new RepositoryError(
       'Failed to fetch predictions by match ID',
       'DATABASE_ERROR',
@@ -309,8 +318,8 @@ export async function updatePrediction(
     });
 
     return prediction as PredictionWithRelations;
-  } catch (error: any) {
-    if (error.code === 'P2025') {
+  } catch (error: unknown) {
+    if (getErrorCode(error) === 'P2025') {
       throw new RepositoryError(
         'Prediction not found',
         'NOT_FOUND',
@@ -334,8 +343,8 @@ export async function deletePrediction(id: string): Promise<void> {
     await prisma.prediction.delete({
       where: { id },
     });
-  } catch (error: any) {
-    if (error.code === 'P2025') {
+  } catch (error: unknown) {
+    if (getErrorCode(error) === 'P2025') {
       throw new RepositoryError(
         'Prediction not found',
         'NOT_FOUND',
@@ -359,7 +368,7 @@ export async function countPredictionsByRunId(runId: string): Promise<number> {
     return await prisma.prediction.count({
       where: { runId },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     throw new RepositoryError(
       'Failed to count predictions',
       'DATABASE_ERROR',
@@ -392,7 +401,7 @@ export async function getPredictionsWithDecisions(
     });
 
     return predictions as PredictionWithRelations[];
-  } catch (error: any) {
+  } catch (error: unknown) {
     throw new RepositoryError(
       'Failed to fetch predictions with decisions',
       'DATABASE_ERROR',

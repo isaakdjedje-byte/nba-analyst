@@ -42,12 +42,118 @@ jobs:
         run: npm run lint
 
   # =============================================================================
-  # JOB 2: Build - Application Build Verification
+  # JOB 2: TypeCheck - Static Type Validation
+  # =============================================================================
+  typecheck:
+    name: TypeCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run TypeScript check
+        run: npm run typecheck
+
+      - name: Run security strict check
+        run: npm run typecheck:security
+
+  # =============================================================================
+  # JOB 3: Contracts - Runtime/API contract consistency
+  # =============================================================================
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: [typecheck]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Verify all hardening gates
+        run: npm run verify:hardening:ci
+
+  # =============================================================================
+  # JOB 4: Migration Gate - Schema Validation
+  # Validates Prisma schema and generates migration SQL (no auto-apply)
+  # =============================================================================
+  migration-gate:
+    name: Migration Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Install Prisma
+        run: npm install prisma @prisma/client --save-dev
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+
+      - name: Lint Prisma Schema
+        run: npx prisma format --schema=./prisma/schema.prisma
+
+      - name: Check for Pending Migrations
+        run: |
+          echo "Checking for unapplied migrations..."
+          # Generate SQL without applying (--preview-feature for some versions)
+          npx prisma migrate diff --from-empty --to-schema-datamodel ./prisma/schema.prisma --script > migration.sql || true
+          
+          if [ -s migration.sql ]; then
+            echo "Migration SQL generated:"
+            cat migration.sql
+            # This is informational - migrations should be reviewed manually
+            echo "⚠️ Schema changes detected - review migration.sql before applying"
+          else
+            echo "No schema changes detected"
+          fi
+
+      - name: Validate Schema
+        run: |
+          echo "Validating Prisma schema..."
+          npx prisma validate --schema=./prisma/schema.prisma
+
+  # =============================================================================
+  # JOB 5: Build - Application Build Verification
   # =============================================================================
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [lint, typecheck, contracts, migration-gate]
 
     steps:
       - name: Checkout code
@@ -68,13 +174,14 @@ jobs:
           CI: true
 
   # =============================================================================
-  # JOB 3: Test - Epic-scoped Execution with Sharding
+  # JOB 6: Test - Epic-scoped Execution with Sharding
   # Reads .current-epic to determine which tests to run
   # =============================================================================
   test:
     name: Test (Shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: [build]
     outputs:
       current-epic: ${{ steps.read-epic.outputs.epic }}
 
@@ -134,12 +241,12 @@ jobs:
           if-no-files-found: ignore
 
   # =============================================================================
-  # JOB 4: Report - Aggregate Results
+  # JOB 7: Report - Aggregate Results
   # =============================================================================
   report:
     name: Test Report
     runs-on: ubuntu-latest
-    needs: [lint, build, test]
+    needs: [lint, typecheck, contracts, migration-gate, build, test]
     if: always()
 
     steps:
@@ -164,25 +271,28 @@ jobs:
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+           echo "| TypeCheck | ${{ needs.typecheck.result }} |" >> $GITHUB_STEP_SUMMARY
+           echo "| Contracts | ${{ needs.contracts.result }} |" >> $GITHUB_STEP_SUMMARY
+           echo "| Migration Gate | ${{ needs.migration-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Shards executed:** 4" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.lint.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.test.result }}" == "success" ]; then
-            echo "✅ **All checks passed!**" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Some checks failed - review logs above**" >> $GITHUB_STEP_SUMMARY
-          fi
+           if [ "${{ needs.lint.result }}" == "success" ] && [ "${{ needs.typecheck.result }}" == "success" ] && [ "${{ needs.contracts.result }}" == "success" ] && [ "${{ needs.migration-gate.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.test.result }}" == "success" ]; then
+             echo "✅ **All checks passed!**" >> $GITHUB_STEP_SUMMARY
+           else
+             echo "❌ **Some checks failed - review logs above**" >> $GITHUB_STEP_SUMMARY
+           fi
 
   # =============================================================================
-  # JOB 5: Epic Completion Check
+  # JOB 8: Epic Completion Check
   # Validates that all tests for current epic pass before allowing merge
   # =============================================================================
   epic-completion:
     name: Epic Completion Check
     runs-on: ubuntu-latest
-    needs: [lint, build, test]
+    needs: [lint, typecheck, contracts, migration-gate, build, test]
     if: always()
 
     steps:
@@ -201,10 +311,10 @@ jobs:
       - name: Check Epic Completion
         run: |
           echo "Checking Epic ${{ steps.current-epic.outputs.epic }} completion status..."
-          if [ "${{ needs.lint.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.test.result }}" == "success" ]; then
-            echo "✅ Epic ${{ steps.current-epic.outputs.epic }} tests completed successfully"
-            exit 0
-          else
+           if [ "${{ needs.lint.result }}" == "success" ] && [ "${{ needs.typecheck.result }}" == "success" ] && [ "${{ needs.contracts.result }}" == "success" ] && [ "${{ needs.migration-gate.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.test.result }}" == "success" ]; then
+             echo "✅ Epic ${{ steps.current-epic.outputs.epic }} tests completed successfully"
+             exit 0
+           else
             echo "❌ Epic ${{ steps.current-epic.outputs.epic }} has failing tests"
             exit 1
           fi

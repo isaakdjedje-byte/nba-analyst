@@ -84,13 +84,20 @@ test.describe('Decision API Tests @epic2', () => {
 ### Epic 2: Production décisionnelle fiable
 
 **Scope**: Data pipeline, Policy Engine, Hard-stops, Fallback  
-**Tags**: `@epic2`, `@data`, `@decisions`, `@policy`  
+**Tags**: `@epic2`, `@data`, `@decisions`, `@policy`, `@hardstop`  
 **Fichiers**:
-- `tests/api/decisions*.spec.ts`
+- `tests/api/v1/decisions*.spec.ts`
 - `tests/api/policy*.spec.ts`
 - `tests/e2e/decision*.spec.ts`
+- `tests/e2e/daily-run.spec.ts` - Story 2.10: Pipeline E2E tests
+- `tests/e2e/hardstop-api.spec.ts` - Story 2.11: Hard-Stop API E2E tests
+- `tests/e2e/helpers/hardstop-helpers.ts` - Helper functions for hard-stop state
 
-**Note**: Ces tests sont actuellement marqués `.skip()` car Epic 2 est dans le backlog.
+**Stories complétées**:
+- ✅ Story 2.10: Tests E2E du pipeline daily run
+- ✅ Story 2.11: Tests E2E de l'API Hard-Stop
+
+**Note**: Epic 2 est maintenant complété avec couverture de tests complète.
 
 ### Epic 3: Expérience Picks/No-Bet
 
@@ -131,6 +138,14 @@ test.describe('Decision API Tests @epic2', () => {
 ```bash
 # Par défaut, tous les tests sont exécutés localement
 npx playwright test
+
+# Gate de hardening API/CI
+npm run verify:hardening
+
+# Sous-suites utiles
+npm run test:security
+npm run test:b2b-docs
+npm run test:ml-core
 ```
 
 ### Exécuter tests d'un Epic spécifique
@@ -190,7 +205,7 @@ Shard 4/4: epic-1-auth-mobile
 echo "2" > .current-epic
 
 # Réactiver les tests Epic 2
-# Modifier: tests/api/decisions-crud.spec.ts
+# Modifier: tests/api/v1/decisions-crud.spec.ts
 # test.describe.skip('Decisions API @epic2', () => {  // OLD
 # test.describe('Decisions API @epic2', () => {       // NEW
 ```
@@ -210,7 +225,7 @@ Les tests des Epics futurs sont marqués avec `.skip()` pour :
 
 | Fichier | Epic | Raison | Date prévue |
 |---------|------|--------|-------------|
-| `tests/api/decisions-crud.spec.ts` | Epic 2 | Endpoints non implémentés | Sprint prochain |
+| `tests/api/v1/decisions-crud.spec.ts` | Epic 2 | Endpoints non implémentés | Sprint prochain |
 | `tests/api/admin-api.spec.ts` | Epic 4 | Admin API dans le futur | Epic 4 |
 | `tests/api/mfa-api.spec.ts` | Epic 4 | MFA avancé dans le futur | Epic 4 |
 

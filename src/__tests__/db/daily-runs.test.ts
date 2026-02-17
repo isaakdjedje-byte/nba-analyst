@@ -207,7 +207,7 @@ describe('Daily Runs Repository - Type Validation', () => {
         hardStopCount: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      } as unknown as never);
 
       const input: DailyRunCreateInput = {
         runDate: new Date('2026-02-13'),
@@ -232,7 +232,7 @@ describe('Daily Runs Repository - Type Validation', () => {
         runDate: new Date(),
         status: 'RUNNING',
         totalMatches: 15,
-      } as any);
+      } as unknown as never);
 
       const result = await getDailyRunById('run-456');
 
@@ -251,7 +251,7 @@ describe('Daily Runs Repository - Type Validation', () => {
         runDate,
         status: 'COMPLETED',
         totalMatches: 20,
-      } as any);
+      } as unknown as never);
 
       const result = await getDailyRunByDate(runDate);
 
@@ -264,7 +264,7 @@ describe('Daily Runs Repository - Type Validation', () => {
 
     it('should increment predictions count', async () => {
       const mockUpdate = vi.mocked(prisma.dailyRun.update);
-      mockUpdate.mockResolvedValue({} as any);
+      mockUpdate.mockResolvedValue({} as unknown as never);
 
       await incrementPredictionsCount('run-789');
 
@@ -280,7 +280,7 @@ describe('Daily Runs Repository - Type Validation', () => {
 
     it('should update run stats for PICK status', async () => {
       const mockUpdate = vi.mocked(prisma.dailyRun.update);
-      mockUpdate.mockResolvedValue({} as any);
+      mockUpdate.mockResolvedValue({} as unknown as never);
 
       await updateRunStats('run-pick', 'PICK');
 
@@ -294,7 +294,7 @@ describe('Daily Runs Repository - Type Validation', () => {
 
     it('should update run stats for HARD_STOP status', async () => {
       const mockUpdate = vi.mocked(prisma.dailyRun.update);
-      mockUpdate.mockResolvedValue({} as any);
+      mockUpdate.mockResolvedValue({} as unknown as never);
 
       await updateRunStats('run-stop', 'HARD_STOP');
 
@@ -320,7 +320,7 @@ describe('Daily Runs Repository - Type Validation', () => {
         dataQualityScore: 0.92,
         startedAt,
         completedAt,
-      } as any);
+      } as unknown as never);
 
       const result = await getRunStatistics('run-stats');
 
@@ -345,7 +345,7 @@ describe('Daily Runs Repository - Type Validation', () => {
         dataQualityScore: null,
         startedAt: new Date(),
         completedAt: null,
-      } as any);
+      } as unknown as never);
 
       const result = await getRunStatistics('run-incomplete');
 

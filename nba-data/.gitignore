@@ -1,0 +1,10 @@
+# Ignore large data files
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.csv
+*.json
+*.log
+
+# Keep directory structure
+!.gitkeep
