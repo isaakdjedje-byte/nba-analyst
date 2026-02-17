@@ -38,11 +38,11 @@ test.describe('Dashboard → Picks → Decision E2E Flow', () => {
     await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
     
     // Step 3: Navigate to picks
-    const picksPromise = page.waitForResponse(/.*\/api\/dashboard/picks/);
-    await page.getByRole('link', { name: /dashboard/picks/i }).click();
+    const picksPromise = page.waitForResponse(/.*\/api\/dashboard\/picks/);
+    await page.getByRole('link', { name: /dashboard\/picks/i }).click();
     
     await picksPromise;
-    await expect(page).toHaveURL(/\/dashboard\/dashboard/picks/);
+    await expect(page).toHaveURL(/\/dashboard\/picks/);
     
     // Step 4: Select a pick
     const submitPromise = page.waitForResponse(/.*\/api\/decisions/);

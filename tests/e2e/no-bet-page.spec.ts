@@ -50,7 +50,7 @@ test.describe('No-Bet Page @e2e @no-bet', () => {
     await page.waitForResponse(resp => resp.status() === 200);
     
     // Check first card has rationale
-    const firstCardRationale = page.getByTestId(/dashboard/no-bet-rationale-/).first();
+    const firstCardRationale = page.getByTestId(/dashboard\/no-bet-rationale-/).first();
     await expect(firstCardRationale).toBeVisible();
     
     // Check failed gates are displayed

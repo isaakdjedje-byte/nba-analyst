@@ -107,6 +107,6 @@ test.describe('Critical User Journey - P0 @p0 @e2e @journey @critical', () => {
     await page.waitForResponse(resp => resp.status() === 200);
     
     // Then: Should navigate to no-bet page
-    await expect(page).toHaveURL(/\/dashboard\/dashboard/no-bet/);
+    await expect(page).toHaveURL(/\/dashboard\/no-bet/);
   });
 });

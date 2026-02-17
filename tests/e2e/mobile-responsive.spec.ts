@@ -124,7 +124,7 @@ test.describe('Mobile Responsive Design @p1 @mobile @responsive @ux', () => {
       await page.goto('/dashboard/picks');
 
       // Then picks should be visible
-      const picksHeader = page.getByRole('heading', { name: /dashboard/picks|recommendations/i });
+      const picksHeader = page.getByRole('heading', { name: /dashboard\/picks|recommendations/i });
       await expect(picksHeader).toBeVisible();
 
       // Content should be readable

@@ -70,7 +70,7 @@ test.describe('Admin RBAC Flows - P1 @p1 @e2e @admin @rbac', () => {
 
     // Then should see navigation appropriate for user role
     await expect(page.getByRole('navigation')).toBeVisible();
-    await expect(page.getByText(/dashboard/picks|dashboard|home/i)).toBeVisible();
+    await expect(page.getByText(/dashboard\/picks|dashboard|home/i)).toBeVisible();
   });
 
   test('[P1] should redirect unauthorized users from protected routes', async ({ page }) => {

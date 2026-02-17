@@ -40,7 +40,7 @@ test.describe('Dashboard & Picks User Journey @dashboard @picks @journey @e2e', 
     test('[P1] should view all picks on dedicated page', async ({ page }) => {
       await page.goto('/dashboard/picks');
 
-      await expect(page.getByRole('heading', { name: /dashboard/picks|recommendations/i })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /dashboard\/picks|recommendations/i })).toBeVisible();
       await expect(page.locator('body')).toContainText(/pick|bet|recommendation/i);
     });
 

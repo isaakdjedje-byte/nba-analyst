@@ -27,7 +27,7 @@ test.describe('Investigation Search', () => {
       await expect(page.getByRole('textbox', { name: /search/i })).toBeVisible();
       
       // Assert page title or heading
-      await expect(page.getByRole('heading', { name: /dashboard/investigation/i })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /dashboard\/investigation/i })).toBeVisible();
     });
 
     test('[P1] should return search results for valid query', async ({ page }) => {
@@ -128,7 +128,7 @@ test.describe('Investigation Detail', () => {
     await page.goto('/dashboard/investigation/inv-001');
     
     // Assert key elements visible
-    await expect(page.getByRole('heading', { name: /dashboard/investigation/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /dashboard\/investigation/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /back/i })).toBeVisible();
   });
 
@@ -150,7 +150,7 @@ test.describe('Investigation Detail', () => {
       await nextButton.click();
       
       // URL should change
-      await expect(page).toHaveURL(/\/dashboard/investigation\/inv-\d+/);
+      await expect(page).toHaveURL(/\/dashboard\/investigation\/inv-\d+/);
     }
   });
 

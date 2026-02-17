@@ -79,17 +79,17 @@ test.describe('Story 3.8: Mobile-first Responsive Design', () => {
       // Click No-Bet tab
       await page.getByTestId('mobile-nav-no-bet').click();
       await page.waitForLoadState('networkidle');
-      await expect(page).toHaveURL(/.*\/dashboard/no-bet.*/);
+      await expect(page).toHaveURL(/.*\/dashboard\/no-bet.*/);
 
       // Click Performance tab
       await page.getByTestId('mobile-nav-performance').click();
       await page.waitForLoadState('networkidle');
-      await expect(page).toHaveURL(/.*\/dashboard/performance.*/);
+      await expect(page).toHaveURL(/.*\/dashboard\/performance.*/);
 
       // Click Logs tab
       await page.getByTestId('mobile-nav-logs').click();
       await page.waitForLoadState('networkidle');
-      await expect(page).toHaveURL(/.*\/dashboard/logs.*/);
+      await expect(page).toHaveURL(/.*\/dashboard\/logs.*/);
     });
   });
 

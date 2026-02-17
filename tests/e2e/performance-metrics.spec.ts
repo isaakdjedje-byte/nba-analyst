@@ -23,7 +23,7 @@ test.describe('Performance Dashboard', () => {
       await page.goto('/dashboard/performance');
       
       // Assert main heading
-      await expect(page.getByRole('heading', { name: /dashboard/performance/i })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /dashboard\/performance/i })).toBeVisible();
       
       // Assert key metric cards present
       await expect(page.getByTestId('metric-card')).toHaveCount(4); // Common: win rate, ROI, etc.
