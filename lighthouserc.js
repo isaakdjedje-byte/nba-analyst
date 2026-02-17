@@ -15,7 +15,7 @@ module.exports = {
       startServerCommand: 'npm run dev',
       
       // Wait for server to be ready
-      startServerReadyPattern: 'Ready on',
+      startServerReadyPattern: 'Ready in|Ready on',
       startServerReadyTimeout: 60000,
       
       // URL to test
@@ -27,7 +27,6 @@ module.exports = {
       
       // Use mobile emulation
       settings: {
-        preset: 'mobile',
         formFactor: 'mobile',
         screenEmulation: {
           mobile: true,
