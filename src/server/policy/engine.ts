@@ -17,21 +17,15 @@ import {
   RunContext,
   GateResults,
   DecisionOutcome,
-  DecisionStatus,
   PolicyError,
 } from './types';
-import {
-  PolicyConfigLoader,
-  getPolicyConfig,
-  DEFAULT_POLICY_CONFIG,
-} from './config';
+import { DEFAULT_POLICY_CONFIG } from './config';
 import {
   ConfidenceGate,
   EdgeGate,
   DriftGate,
   HardStopGate,
   GateInput,
-  GateResult,
 } from './gates';
 
 export interface PolicyEngineDeps {
@@ -206,7 +200,7 @@ export class PolicyEngine {
     
     // If hard-stop triggers, short-circuit immediately
     if (!hardStopResult.passed) {
-      return this.createHardStopResult(prediction, context, hardStopResult);
+      return this.createHardStopResult(prediction, context);
     }
 
     // Evaluate remaining gates in parallel
@@ -306,8 +300,7 @@ export class PolicyEngine {
    */
   private createHardStopResult(
     prediction: PredictionInput,
-    context: RunContext,
-    hardStopResult: GateResult
+    context: RunContext
   ): PolicyEvaluationResult {
     const hardStopReason = this.hardStopGate.getHardStopReason({
       dailyLoss: context.dailyLoss,
@@ -391,8 +384,6 @@ export class PolicyEngine {
    * Generate human-readable rationale for the decision
    */
   private generateRationale(decision: DecisionOutcome, gateResults: GateResults): string {
-    const parts: string[] = [];
-
     if (decision.status === 'HARD_STOP') {
       return `Decision: ${decision.status}. Reason: ${gateResults.hardStop.message}`;
     }

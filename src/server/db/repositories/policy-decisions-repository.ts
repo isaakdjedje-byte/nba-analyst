@@ -9,8 +9,9 @@
  */
 
 import { prisma } from '@/server/db/client';
-import { RepositoryError } from './predictions-repository';
 import { v4 as uuidv4 } from 'uuid';
+import type { DataSourceFingerprints } from '@/server/audit/types';
+import type { Prisma } from '@prisma/client';
 
 // Re-export the DecisionStatus enum type
 export type DecisionStatus = 'PICK' | 'NO_BET' | 'HARD_STOP';
@@ -41,6 +42,8 @@ export interface PolicyDecisionCreateInput {
   publishedAt?: Date | null;
   traceId: string;
   executedAt: Date;
+  // Story 4.5: Data source fingerprints
+  dataSourceFingerprints?: DataSourceFingerprints | null;
 }
 
 export interface PolicyDecisionUpdateInput {
@@ -85,6 +88,8 @@ export interface PolicyDecisionWithRelations {
   executedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+  // Story 4.5: Data source fingerprints for audit
+  dataSourceFingerprints: DataSourceFingerprints | null;
   prediction?: {
     id: string;
     matchId: string;
@@ -121,6 +126,8 @@ const policyDecisionSelect = {
   executedAt: true,
   createdAt: true,
   updatedAt: true,
+  // Story 4.5: Data source fingerprints for audit
+  dataSourceFingerprints: true,
 };
 
 /**
@@ -138,7 +145,7 @@ export async function createPolicyDecision(
     uniqueTraceId = `${uniqueTraceId}-${Date.now()}`;
   }
   
-  const data: any = {
+  const data: Prisma.PolicyDecisionCreateInput = {
     prediction: { connect: { id: input.predictionId } },
     matchId: input.matchId,
     userId: input.userId,
@@ -159,10 +166,12 @@ export async function createPolicyDecision(
     confidence: input.confidence,
     edge: input.edge,
     modelVersion: input.modelVersion,
-    predictionInputs: input.predictionInputs,
+    predictionInputs: input.predictionInputs as Prisma.InputJsonValue,
     publishedAt: input.publishedAt,
     traceId: input.traceId,
     executedAt: input.executedAt,
+    // Story 4.5: Data source fingerprints for audit
+    dataSourceFingerprints: input.dataSourceFingerprints as unknown as Prisma.InputJsonValue,
   };
 
   const decision = await prisma.policyDecision.create({
@@ -170,7 +179,7 @@ export async function createPolicyDecision(
     select: policyDecisionSelect,
   });
 
-  return decision as PolicyDecisionWithRelations;
+  return decision as unknown as unknown as PolicyDecisionWithRelations;
 }
 
 /**
@@ -184,7 +193,7 @@ export async function getPolicyDecisionById(
     select: policyDecisionSelect,
   });
 
-  return decision as PolicyDecisionWithRelations | null;
+  return decision as unknown as unknown as PolicyDecisionWithRelations | null;
 }
 
 /**
@@ -198,7 +207,7 @@ export async function getPolicyDecisionByPredictionId(
     select: policyDecisionSelect,
   });
 
-  return decision as PolicyDecisionWithRelations | null;
+  return decision as unknown as PolicyDecisionWithRelations | null;
 }
 
 /**
@@ -213,7 +222,7 @@ export async function getPolicyDecisionsByRunId(
     orderBy: { executedAt: 'desc' },
   });
 
-  return decisions as PolicyDecisionWithRelations[];
+  return decisions as unknown as PolicyDecisionWithRelations[];
 }
 
 /**
@@ -228,7 +237,7 @@ export async function getPolicyDecisionsByStatus(
     orderBy: { executedAt: 'desc' },
   });
 
-  return decisions as PolicyDecisionWithRelations[];
+  return decisions as unknown as PolicyDecisionWithRelations[];
 }
 
 /**
@@ -243,7 +252,7 @@ export async function getPolicyDecisionsByMatchId(
     orderBy: { executedAt: 'desc' },
   });
 
-  return decisions as PolicyDecisionWithRelations[];
+  return decisions as unknown as PolicyDecisionWithRelations[];
 }
 
 /**
@@ -253,7 +262,7 @@ export async function updatePolicyDecision(
   id: string,
   input: PolicyDecisionUpdateInput
 ): Promise<PolicyDecisionWithRelations | null> {
-  const data: any = {};
+  const data: Prisma.PolicyDecisionUpdateInput = {};
 
   if (input.status !== undefined) {
     data.status = input.status;
@@ -286,7 +295,7 @@ export async function updatePolicyDecision(
     select: policyDecisionSelect,
   });
 
-  return decision as PolicyDecisionWithRelations;
+  return decision as unknown as unknown as PolicyDecisionWithRelations;
 }
 
 /**
@@ -351,7 +360,7 @@ export async function getPolicyDecisionWithPrediction(
     },
   });
 
-  return decision as PolicyDecisionWithRelations | null;
+  return decision as unknown as PolicyDecisionWithRelations | null;
 }
 
 // =====================================================
@@ -389,7 +398,7 @@ export async function getDecisionHistory(
   const { fromDate, toDate, status, matchId, page = 1, limit = 20 } = params;
   
   // Build where clause
-  const where: any = {};
+  const where: Prisma.PolicyDecisionWhereInput = {};
   
   if (fromDate || toDate) {
     where.matchDate = {};
@@ -422,7 +431,7 @@ export async function getDecisionHistory(
   });
 
   return {
-    decisions: decisions as PolicyDecisionWithRelations[],
+    decisions: decisions as unknown as PolicyDecisionWithRelations[],
     total,
     page,
     limit,
@@ -435,12 +444,12 @@ export async function getDecisionHistory(
 export async function getPolicyDecisionByTraceId(
   traceId: string
 ): Promise<PolicyDecisionWithRelations | null> {
-  const decision = await prisma.policyDecision.findUnique({
+  const decision = await prisma.policyDecision.findFirst({
     where: { traceId },
     select: policyDecisionSelect,
   });
 
-  return decision as PolicyDecisionWithRelations | null;
+  return decision as unknown as PolicyDecisionWithRelations | null;
 }
 
 /**
@@ -474,11 +483,11 @@ export async function createManyPolicyDecisions(
       publishedAt: d.publishedAt,
       traceId: d.traceId,
       executedAt: d.executedAt,
-    })),
+    })) as unknown as Parameters<typeof prisma.policyDecision.createManyAndReturn>[0]['data'],
     select: policyDecisionSelect,
   });
 
-  return created as PolicyDecisionWithRelations[];
+  return created as unknown as PolicyDecisionWithRelations[];
 }
 
 /**
@@ -493,7 +502,7 @@ export async function publishPolicyDecision(
     select: policyDecisionSelect,
   });
 
-  return decision as PolicyDecisionWithRelations | null;
+  return decision as unknown as PolicyDecisionWithRelations | null;
 }
 
 /**
@@ -515,7 +524,7 @@ export async function getDecisionsForRetention(
     take: limit,
   });
 
-  return decisions as PolicyDecisionWithRelations[];
+  return decisions as unknown as PolicyDecisionWithRelations[];
 }
 
 /**

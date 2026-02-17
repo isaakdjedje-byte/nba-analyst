@@ -5,17 +5,26 @@
  * Story 2.7: Implement fallback strategy and degraded no-bet mode
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { FallbackChain, FallbackChainConfig, FallbackDecision, DataQualityAssessment, PredictionInput } from '@/server/ml/orchestration';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Logger } from 'pino';
+import {
+  FallbackChain,
+  FallbackChainConfig,
+  DataQualityAssessment,
+  PredictionInput,
+  ModelInfo,
+  ModelRegistry,
+  DataQualityGates,
+} from '@/server/ml/orchestration';
 
 // Test utilities
-const createMockModelRegistry = (models: Record<string, any>) => ({
+const createMockModelRegistry = (models: Record<string, ModelInfo>) => ({
   getModel: vi.fn(async (modelId: string) => models[modelId] || null),
   listModels: vi.fn(async () => Object.values(models)),
-});
+}) as ModelRegistry;
 
 const createMockDataQuality = (assessments: Map<string, DataQualityAssessment>) => ({
-  assess: vi.fn(async (input: PredictionInput, model: any) => {
+  assess: vi.fn(async (input: PredictionInput, model: ModelInfo) => {
     const key = `${input.id}-${model.id}`;
     return assessments.get(key) || {
       overallScore: 0,
@@ -27,7 +36,7 @@ const createMockDataQuality = (assessments: Map<string, DataQualityAssessment>) 
       failedChecks: ['no_assessment_available'],
     };
   }),
-});
+}) as DataQualityGates;
 
 const mockLogger = {
   info: vi.fn(),
@@ -35,7 +44,7 @@ const mockLogger = {
   error: vi.fn(),
   debug: vi.fn(),
   child: vi.fn(() => mockLogger),
-};
+} as unknown as Logger;
 
 describe('Daily Run Fallback Integration', () => {
   let config: FallbackChainConfig;
@@ -87,7 +96,7 @@ describe('Daily Run Fallback Integration', () => {
 
       const mockMlRegistry = createMockModelRegistry(models);
       const mockDataQuality = createMockDataQuality(assessments);
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
 
       const input: PredictionInput = {
         id: 'pred-1',
@@ -156,7 +165,7 @@ describe('Daily Run Fallback Integration', () => {
 
       const mockMlRegistry = createMockModelRegistry(models);
       const mockDataQuality = createMockDataQuality(assessments);
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
 
       const input: PredictionInput = {
         id: 'pred-2',
@@ -204,7 +213,7 @@ describe('Daily Run Fallback Integration', () => {
 
       const mockMlRegistry = createMockModelRegistry(models);
       const mockDataQuality = createMockDataQuality(assessments);
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
 
       const input: PredictionInput = {
         id: 'pred-3',
@@ -269,7 +278,7 @@ describe('Daily Run Fallback Integration', () => {
       const mockDataQuality = createMockDataQuality(assessments);
       
       // First run - should fail
-      const fallbackChain1 = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain1 = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const inputFailed: PredictionInput = {
         id: 'pred-4-initial',
@@ -322,7 +331,7 @@ describe('Daily Run Fallback Integration', () => {
 
       const mockMlRegistry = createMockModelRegistry(models);
       const mockDataQuality = createMockDataQuality(assessments);
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
 
       const input: PredictionInput = {
         id: 'pred-5',
@@ -368,7 +377,7 @@ describe('Fallback Chain Statistics', () => {
 
     const mockMlRegistry = createMockModelRegistry(models);
     const mockDataQuality = createMockDataQuality(assessments);
-    const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+    const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
 
     // Simulate processing multiple predictions
     const predictions = [

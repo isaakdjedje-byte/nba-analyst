@@ -16,17 +16,30 @@ import { RunContext } from '@/server/policy/types';
 import { sendAlert, createHardStopAlert } from '@/server/ingestion/alerting';
 import { v4 as uuidv4 } from 'uuid';
 import { Logger } from 'pino';
+import { Prisma } from '@prisma/client';
 
 // Fallback chain imports (Story 2.7)
 import {
   FallbackChain,
   FallbackChainConfig,
-  createFallbackChain,
   createDataQualityGates,
   DataQualityAssessment,
   FallbackLevel,
   FallbackAttempt
 } from '@/server/ml/orchestration';
+
+// Story 4.5: Import data source fingerprints types
+import type { DataSourceFingerprints } from '@/server/audit/types';
+
+interface EvaluatedFallbackResult {
+  finalLevel: FallbackLevel;
+  wasForcedNoBet: boolean;
+  fallbackAttempts?: FallbackAttempt[];
+  decision: {
+    rationale?: string;
+    fallbackContext?: unknown;
+  };
+}
 
 export interface DailyRunJobConfig {
   // Bankroll settings
@@ -40,6 +53,9 @@ export interface DailyRunJobConfig {
   // Stake amount for tracking exposure (used for daily loss calculation)
   // In production, this would come from user preferences or be calculated per-pick
   defaultStakeAmount?: number;
+  
+  // Story 4.5: Data source fingerprints for audit metadata
+  dataSourceFingerprints?: DataSourceFingerprints;
 }
 
 export interface DailyRunJobResult {
@@ -138,7 +154,7 @@ export async function processDailyRun(
   
   const fallbackChain = new FallbackChain(
     fallbackConfig,
-    mockModelRegistry as any,
+    mockModelRegistry as unknown as ConstructorParameters<typeof FallbackChain>[1],
     dataQualityGates,
     logger
   );
@@ -297,12 +313,10 @@ export async function processDailyRun(
       // FALLBACK CHAIN EVALUATION (Story 2.7)
       // Evaluate data quality and determine fallback level
       // ============================================
-      let finalStatus: 'PICK' | 'NO_BET' | 'HARD_STOP' = 'NO_BET';
-      let fallbackContext: any = undefined;
-      let fallbackResult: any = null;
+      let fallbackResult: EvaluatedFallbackResult | null = null;
       
       try {
-        fallbackResult = await fallbackChain.evaluate(predictionInput);
+        fallbackResult = await fallbackChain.evaluate(predictionInput) as EvaluatedFallbackResult;
         
         // Track statistics
         fallbackLevelsCount[fallbackResult.finalLevel]++;
@@ -323,8 +337,7 @@ export async function processDailyRun(
         
         // Use fallback chain decision if it's a forced No-Bet
         if (fallbackResult.wasForcedNoBet) {
-          finalStatus = 'NO_BET';
-          fallbackContext = fallbackResult.decision.fallbackContext;
+          void fallbackResult.decision.fallbackContext;
         }
       } catch (fallbackError) {
         // If fallback chain fails, log and continue with policy engine
@@ -337,14 +350,13 @@ export async function processDailyRun(
       const result = await policyEngine.evaluate(predictionInput, runContext);
       
       // If fallback chain forced No-Bet, use that instead
-      if (fallbackResult?.wasForcedNoBet) {
-        result.status = 'NO_BET';
-        result.rationale = fallbackResult.decision.rationale || result.rationale;
-      }
-      
-      finalStatus = result.status;
+        if (fallbackResult?.wasForcedNoBet) {
+          result.status = 'NO_BET';
+          result.rationale = fallbackResult.decision?.rationale || result.rationale;
+        }
       
       // Create policy decision with fallback context (Story 2.7)
+      // Include data source fingerprints for audit (Story 4.5)
       await prisma.policyDecision.create({
         data: {
           predictionId: prediction.id,
@@ -361,7 +373,17 @@ export async function processDailyRun(
           traceId: result.traceId,
           executedAt: result.executedAt,
           runId,
-        },
+          // Required fields from schema (Story 2.9)
+          matchDate: prediction.matchDate,
+          homeTeam: prediction.homeTeam,
+          awayTeam: prediction.awayTeam,
+          confidence: prediction.confidence,
+          edge: prediction.edge,
+          modelVersion: prediction.modelVersion,
+          recommendedPick: prediction.winnerPrediction,
+          // Story 4.5: Add data source fingerprints for audit
+          dataSourceFingerprints: config.dataSourceFingerprints as unknown as Prisma.InputJsonValue,
+        } as Prisma.PolicyDecisionUncheckedCreateInput,
       });
       
       // Update prediction status
@@ -426,7 +448,7 @@ export async function processDailyRun(
   }
   
   // Update run status
-  const finalStatus = hardStopTriggered ? 'failed' : 'completed';
+  const finalStatus: 'COMPLETED' | 'FAILED' = hardStopTriggered ? 'FAILED' : 'COMPLETED';
   await prisma.dailyRun.update({
     where: { id: runId },
     data: {
@@ -464,10 +486,21 @@ export async function processDailyRun(
  * Mark remaining predictions as HARD_STOP when hard-stop triggers mid-run
  */
 async function markRemainingAsHardStop(
-  remainingPredictions: any[],
+  remainingPredictions: Array<{
+    id: string;
+    matchId: string;
+    userId: string;
+    matchDate: Date;
+    homeTeam: string;
+    awayTeam: string;
+    confidence: number;
+    edge: number | null;
+    modelVersion: string;
+  }>,
   runId: string,
   reason: string,
-  tracker: HardStopTracker
+  tracker: HardStopTracker,
+  dataSourceFingerprints?: DataSourceFingerprints
 ): Promise<void> {
   const recommendedAction = tracker.getRecommendedAction();
   
@@ -490,7 +523,16 @@ async function markRemainingAsHardStop(
           traceId: `hardstop-${runId}-${Date.now()}`,
           executedAt: new Date(),
           runId,
-        },
+          // Required fields from schema
+          matchDate: prediction.matchDate,
+          homeTeam: prediction.homeTeam,
+          awayTeam: prediction.awayTeam,
+          confidence: prediction.confidence,
+          edge: prediction.edge,
+          modelVersion: prediction.modelVersion,
+          // Story 4.5: Add data source fingerprints for audit
+          dataSourceFingerprints: dataSourceFingerprints as unknown as Prisma.InputJsonValue,
+        } as Prisma.PolicyDecisionUncheckedCreateInput,
       });
       
       // Mark prediction as cancelled due to hard-stop
@@ -536,7 +578,7 @@ export async function resetHardStop(
   actorId: string
 ): Promise<{
   success: boolean;
-  previousState: any;
+  previousState: unknown;
   message: string;
 }> {
   const tracker = createHardStopTracker(DEFAULT_POLICY_CONFIG.hardStops, prisma);

@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createIngestionService } from '../../../server/ingestion';
+import { NextResponse } from 'next/server';
+import { createIngestionService } from '@/server/ingestion';
 
 /**
  * GET /api/ingestion/health
  * Get health status of all data providers
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const traceId = `health-api-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const startTime = Date.now();
 

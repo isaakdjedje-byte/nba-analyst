@@ -7,13 +7,11 @@
  * Subtask 1.4: Add scheduler health check endpoint
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/server/auth/auth-options';
+import { NextResponse } from 'next/server';
 import { getSchedulerHealth, getSchedulerConfig } from '@/server/jobs/scheduler';
 
 // GET /api/v1/runs/health - Get scheduler health
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Check authentication - allow public access for monitoring
     // In production, you might want to add auth here too

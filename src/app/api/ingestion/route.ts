@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createIngestionService, IngestionService } from '../../../server/ingestion';
-import { ZodSchema } from 'zod';
+import { createIngestionService } from '@/server/ingestion';
 
 /**
  * POST /api/ingestion
@@ -93,7 +92,7 @@ export async function POST(request: NextRequest) {
  * GET /api/ingestion
  * Get ingestion configuration and status
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const traceId = `ingestion-api-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
   try {

@@ -1,6 +1,6 @@
-import { ZodSchema, z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 
 /**
  * Schema Drift Detector
@@ -125,18 +125,14 @@ function getFieldType(value: unknown): SchemaFieldType {
 }
 
 /**
- * Calculate hash for schema snapshot
+ * Calculate SHA-256 hash for schema snapshot
+ * Provides strong integrity checking for baseline comparison
+ * Hash is based only on the schema structure (fields), not metadata
  */
 function calculateSnapshotHash(snapshot: Omit<SchemaSnapshot, 'hash'>): string {
-  const str = JSON.stringify(snapshot);
-  // Simple hash for demo - in production use crypto
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return hash.toString(16);
+  // Only hash the fields structure, not metadata like id, timestamp, etc.
+  const str = JSON.stringify(snapshot.fields);
+  return createHash('sha256').update(str).digest('hex');
 }
 
 /**
@@ -148,6 +144,7 @@ export function createSchemaSnapshot(
   data: unknown,
   traceId: string
 ): SchemaSnapshot {
+  void traceId;
   const fields = inferSchemaStructure(data);
   const snapshot: Omit<SchemaSnapshot, 'hash'> = {
     id: `${provider}-${schemaName}-${Date.now()}`,

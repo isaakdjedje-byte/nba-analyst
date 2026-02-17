@@ -280,23 +280,23 @@ describe('ThemeProvider', () => {
     localStorageMock.getItem.mockReturnValue('system');
     
     // Mock matchMedia to simulate system preference change
-    let mediaQueryListener: any = null;
+    let mediaQueryListener: ((event: { matches: boolean; media: string }) => void) | null = null;
     let currentMatches = false;
     
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
-      value: vi.fn().mockImplementation((_query: string) => ({
+      value: vi.fn().mockImplementation(() => ({
         matches: currentMatches,
         media: '',
         onchange: null,
         addListener: vi.fn(),
         removeListener: vi.fn(),
-        addEventListener: vi.fn((event: string, handler: any) => {
+        addEventListener: vi.fn((event: string, handler: (event: { matches: boolean; media: string }) => void) => {
           if (event === 'change') {
             mediaQueryListener = handler;
           }
         }),
-        removeEventListener: vi.fn((_event: string, _handler: any) => {
+        removeEventListener: vi.fn(() => {
           mediaQueryListener = null;
         }),
         dispatchEvent: vi.fn(),
@@ -316,7 +316,7 @@ describe('ThemeProvider', () => {
     // Simulate system preference change from light to dark
     currentMatches = true;
     if (mediaQueryListener) {
-      mediaQueryListener({ matches: true, media: '' });
+      (mediaQueryListener as (event: { matches: boolean; media: string }) => void)({ matches: true, media: '' });
     }
 
     await waitFor(() => {

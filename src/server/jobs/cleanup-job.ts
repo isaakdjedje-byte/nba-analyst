@@ -9,24 +9,26 @@ import { logAuditEvent } from '@/lib/utils/audit';
 import { permanentlyDeleteUser, getAccountsReadyForDeletion } from '@/server/rgpd/account-deletion';
 import { unlink } from 'fs/promises';
 import { existsSync } from 'fs';
-import path from 'path';
 
 export interface CleanupResult {
   deletedAccounts: number;
   cleanedExports: number;
   cleanedSessions: number;
+  cleanedAuditLogs: number;  // Story 4.5: Audit log cleanup
   errors: string[];
 }
 
 /**
  * Run data cleanup for all retention policies
  * Per AC #4 - Automatic data cleanup jobs remove expired data
+ * Story 4.5: Added audit log cleanup for NFR10 compliance
  */
 export async function runDataCleanup(): Promise<CleanupResult> {
   const errors: string[] = [];
   let deletedAccounts = 0;
   let cleanedExports = 0;
   let cleanedSessions = 0;
+  let cleanedAuditLogs = 0;
 
   try {
     // 1. Clean up expired soft-deleted accounts (hard delete)
@@ -84,7 +86,11 @@ export async function runDataCleanup(): Promise<CleanupResult> {
     });
     cleanedSessions = deletedSessions.count;
 
-    // 4. Clean up orphaned exports (files without records or vice versa)
+    // 4. Clean up old audit logs per retention policy (Story 4.5 - NFR10)
+    // AC #4: Audit logs are immutable and queryable for 90+ days
+    cleanedAuditLogs = await cleanupOldAuditLogs();
+
+    // 5. Clean up orphaned exports (files without records or vice versa)
     await cleanupOrphanedExports();
 
     // Log cleanup completion
@@ -96,6 +102,7 @@ export async function runDataCleanup(): Promise<CleanupResult> {
         deletedAccounts,
         cleanedExports,
         cleanedSessions,
+        cleanedAuditLogs,
         errorCount: errors.length,
       },
     });
@@ -104,6 +111,7 @@ export async function runDataCleanup(): Promise<CleanupResult> {
       deletedAccounts,
       cleanedExports,
       cleanedSessions,
+      cleanedAuditLogs,
       errors,
     };
   } catch (error) {
@@ -123,8 +131,41 @@ export async function runDataCleanup(): Promise<CleanupResult> {
       deletedAccounts,
       cleanedExports,
       cleanedSessions,
+      cleanedAuditLogs,
       errors: [...errors, errorMessage],
     };
+  }
+}
+
+/**
+ * Clean up old audit logs per retention policy
+ * Per Story 4.5 AC #4: Audit logs are immutable and queryable for 90+ days
+ * This ensures we keep audit logs for at least 90 days for compliance
+ */
+async function cleanupOldAuditLogs(): Promise<number> {
+  try {
+    // Get audit log retention from policy or use default 90 days
+    const auditRetentionPolicy = await prisma.dataRetentionPolicy.findFirst({
+      where: { dataType: 'audit_log' },
+    });
+    
+    const retentionDays = auditRetentionPolicy?.retentionDays || 90;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    
+    // Delete audit logs older than retention period
+    // Note: In production, you might want to archive them first
+    const result = await prisma.auditLog.deleteMany({
+      where: {
+        timestamp: { lt: cutoffDate },
+      },
+    });
+    
+    console.log(`[CleanupJob] Deleted ${result.count} audit logs older than ${retentionDays} days`);
+    return result.count;
+  } catch (error) {
+    console.error('[CleanupJob] Error cleaning audit logs:', error);
+    return 0;
   }
 }
 
@@ -132,8 +173,7 @@ export async function runDataCleanup(): Promise<CleanupResult> {
  * Clean up orphaned export files (files in exports dir not in DB)
  */
 async function cleanupOrphanedExports(): Promise<number> {
-  const exportsDir = process.env.EXPORT_STORAGE_PATH || './exports';
-  let cleanedCount = 0;
+  const cleanedCount = 0;
 
   try {
     // Get all valid export file paths from DB
@@ -142,7 +182,7 @@ async function cleanupOrphanedExports(): Promise<number> {
       select: { filePath: true },
     });
 
-    const validPaths = new Set(validExports.map(e => e.filePath));
+    void validExports;
 
     // Note: In a real implementation, we'd scan the directory
     // For now, this is a placeholder for the cleanup logic
@@ -184,11 +224,21 @@ export async function initializeRetentionPolicies(): Promise<void> {
   ];
 
   for (const policy of defaultPolicies) {
-    await prisma.dataRetentionPolicy.upsert({
+    // Check if policy exists first
+    const existing = await prisma.dataRetentionPolicy.findFirst({
       where: { dataType: policy.dataType },
-      update: { retentionDays: policy.retentionDays },
-      create: policy,
     });
+    
+    if (existing) {
+      await prisma.dataRetentionPolicy.update({
+        where: { id: existing.id },
+        data: { retentionDays: policy.retentionDays },
+      });
+    } else {
+      await prisma.dataRetentionPolicy.create({
+        data: policy,
+      });
+    }
   }
 }
 
@@ -203,6 +253,7 @@ export async function scheduleCleanup(): Promise<CleanupResult> {
     deletedAccounts: result.deletedAccounts,
     cleanedExports: result.cleanedExports,
     cleanedSessions: result.cleanedSessions,
+    cleanedAuditLogs: result.cleanedAuditLogs,
     errors: result.errors.length,
   });
   return result;
