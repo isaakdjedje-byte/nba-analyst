@@ -1,0 +1,255 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`StatusBadge > Snapshot Tests (Regression) > matches snapshot for HARD_STOP status 1`] = `
+<span
+  aria-atomic="true"
+  aria-label="Statut: Hard-Stop"
+  aria-live="polite"
+  class="
+        inline-flex items-center rounded-full border font-medium transition-colors
+        px-3 py-1 text-sm gap-1.5
+        bg-orange-50 dark:bg-orange-900/20
+        border-orange-200 dark:border-orange-800
+        
+      "
+  data-testid="status-badge"
+  role="status"
+  style="color: rgb(194, 65, 12);"
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-shield-alert h-4 w-4 flex-shrink-0"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+    />
+    <path
+      d="M12 8v4"
+    />
+    <path
+      d="M12 16h.01"
+    />
+  </svg>
+  <span>
+    Hard-Stop
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > Snapshot Tests (Regression) > matches snapshot for NO_BET status 1`] = `
+<span
+  aria-atomic="true"
+  aria-label="Statut: No-Bet"
+  aria-live="polite"
+  class="
+        inline-flex items-center rounded-full border font-medium transition-colors
+        px-3 py-1 text-sm gap-1.5
+        bg-blue-50 dark:bg-blue-900/20
+        border-blue-200 dark:border-blue-800
+        
+      "
+  data-testid="status-badge"
+  role="status"
+  style="color: rgb(37, 99, 235);"
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-ban h-4 w-4 flex-shrink-0"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M4.929 4.929 19.07 19.071"
+    />
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+  </svg>
+  <span>
+    No-Bet
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > Snapshot Tests (Regression) > matches snapshot for PICK status 1`] = `
+<span
+  aria-atomic="true"
+  aria-label="Statut: Pick"
+  aria-live="polite"
+  class="
+        inline-flex items-center rounded-full border font-medium transition-colors
+        px-3 py-1 text-sm gap-1.5
+        bg-emerald-50 dark:bg-emerald-900/20
+        border-emerald-200 dark:border-emerald-800
+        
+      "
+  data-testid="status-badge"
+  role="status"
+  style="color: rgb(4, 120, 87);"
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-check-big h-4 w-4 flex-shrink-0"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M21.801 10A10 10 0 1 1 17 3.335"
+    />
+    <path
+      d="m9 11 3 3L22 4"
+    />
+  </svg>
+  <span>
+    Pick
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > Snapshot Tests (Regression) > matches snapshot for icon-only display 1`] = `
+<span
+  aria-atomic="true"
+  aria-label="Statut: Pick"
+  aria-live="polite"
+  class="
+        inline-flex items-center rounded-full border font-medium transition-colors
+        px-3 py-1 text-sm gap-1.5
+        bg-emerald-50 dark:bg-emerald-900/20
+        border-emerald-200 dark:border-emerald-800
+        
+      "
+  data-testid="status-badge"
+  role="status"
+  style="color: rgb(4, 120, 87);"
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-check-big h-4 w-4 flex-shrink-0"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M21.801 10A10 10 0 1 1 17 3.335"
+    />
+    <path
+      d="m9 11 3 3L22 4"
+    />
+  </svg>
+</span>
+`;
+
+exports[`StatusBadge > Snapshot Tests (Regression) > matches snapshot for lg size 1`] = `
+<span
+  aria-atomic="true"
+  aria-label="Statut: Pick"
+  aria-live="polite"
+  class="
+        inline-flex items-center rounded-full border font-medium transition-colors
+        px-4 py-1.5 text-base gap-2
+        bg-emerald-50 dark:bg-emerald-900/20
+        border-emerald-200 dark:border-emerald-800
+        
+      "
+  data-testid="status-badge"
+  role="status"
+  style="color: rgb(4, 120, 87);"
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-check-big h-5 w-5 flex-shrink-0"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M21.801 10A10 10 0 1 1 17 3.335"
+    />
+    <path
+      d="m9 11 3 3L22 4"
+    />
+  </svg>
+  <span>
+    Pick
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > Snapshot Tests (Regression) > matches snapshot for sm size 1`] = `
+<span
+  aria-atomic="true"
+  aria-label="Statut: Pick"
+  aria-live="polite"
+  class="
+        inline-flex items-center rounded-full border font-medium transition-colors
+        px-3 py-2 text-xs gap-1.5 min-h-[44px] min-w-[44px]
+        bg-emerald-50 dark:bg-emerald-900/20
+        border-emerald-200 dark:border-emerald-800
+        
+      "
+  data-testid="status-badge"
+  role="status"
+  style="color: rgb(4, 120, 87);"
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-check-big h-4 w-4 flex-shrink-0"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M21.801 10A10 10 0 1 1 17 3.335"
+    />
+    <path
+      d="m9 11 3 3L22 4"
+    />
+  </svg>
+  <span>
+    Pick
+  </span>
+</span>
+`;

@@ -238,3 +238,29 @@ export function createFailureAlert(
     metadata: { recoverable },
   };
 }
+
+/**
+ * Create alert for hard-stop activation (Story 2.6)
+ * Critical alert since hard-stop is the safety mechanism
+ */
+export function createHardStopAlert(
+  triggerReason: string,
+  currentState: {
+    dailyLoss: number;
+    consecutiveLosses: number;
+    bankrollPercent: number;
+  },
+  traceId: string
+): AlertPayload {
+  return {
+    severity: 'critical',
+    title: 'HARD-STOP ACTIVATED - Betting Blocked',
+    message: `Hard-stop has been activated: ${triggerReason}. ` +
+      `Current state: Daily Loss: €${currentState.dailyLoss}, ` +
+      `Consecutive Losses: ${currentState.consecutiveLosses}, ` +
+      `Bankroll %: ${(currentState.bankrollPercent * 100).toFixed(1)}%`,
+    traceId,
+    timestamp: new Date().toISOString(),
+    metadata: { triggerReason, currentState },
+  };
+}

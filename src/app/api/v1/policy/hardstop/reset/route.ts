@@ -14,6 +14,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
 import { resetHardStop } from '@/jobs/daily-run-job';
 import { prisma } from '@/server/db/client';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * POST /api/v1/policy/hardstop/reset
@@ -34,10 +35,12 @@ import { prisma } from '@/server/db/client';
  * }
  */
 export async function POST(request: Request) {
+  const traceId = uuidv4();
+
   try {
     // Check authentication
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.email) {
       return NextResponse.json(
         {
@@ -47,18 +50,19 @@ export async function POST(request: Request) {
           },
           meta: {
             timestamp: new Date().toISOString(),
+            traceId,
           },
         },
         { status: 401 }
       );
     }
-    
+
     // Get user role from database
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { role: true, id: true },
     });
-    
+
     if (!user || (user.role !== 'ops' && user.role !== 'admin')) {
       return NextResponse.json(
         {
@@ -68,16 +72,17 @@ export async function POST(request: Request) {
           },
           meta: {
             timestamp: new Date().toISOString(),
+            traceId,
           },
         },
         { status: 403 }
       );
     }
-    
+
     // Parse request body
     const body = await request.json();
     const { reason } = body;
-    
+
     if (!reason || typeof reason !== 'string') {
       return NextResponse.json(
         {
@@ -87,15 +92,16 @@ export async function POST(request: Request) {
           },
           meta: {
             timestamp: new Date().toISOString(),
+            traceId,
           },
         },
         { status: 400 }
       );
     }
-    
+
     // Reset hard-stop
     const result = await resetHardStop(reason, user.id);
-    
+
     if (!result.success) {
       return NextResponse.json({
         data: {
@@ -104,10 +110,11 @@ export async function POST(request: Request) {
         },
         meta: {
           timestamp: new Date().toISOString(),
+          traceId,
         },
       });
     }
-    
+
     return NextResponse.json({
       data: {
         reset: true,
@@ -117,11 +124,12 @@ export async function POST(request: Request) {
       },
       meta: {
         timestamp: new Date().toISOString(),
+        traceId,
       },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    
+
     return NextResponse.json(
       {
         error: {
@@ -131,6 +139,7 @@ export async function POST(request: Request) {
         },
         meta: {
           timestamp: new Date().toISOString(),
+          traceId,
         },
       },
       { status: 500 }

@@ -43,7 +43,6 @@ export class NBACDNProvider extends BaseProvider {
    */
   async getGamesByDate(date: string): Promise<DataSourceResult<Schedule>> {
     const traceId = this.generateTraceId();
-    const startTime = Date.now();
 
     try {
       const endpoint = `/${this.apiVersion}/games?date=${date}`;
@@ -234,7 +233,7 @@ export class NBACDNProvider extends BaseProvider {
         healthy: true,
         latency: Date.now() - startTime,
       };
-    } catch (error) {
+    } catch {
       return {
         healthy: false,
         latency: Date.now() - startTime,

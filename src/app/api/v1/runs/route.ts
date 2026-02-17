@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
 import { prisma } from '@/server/db/client';
-import { triggerDailyRun, getSchedulerHealth, getSchedulerConfig } from '@/server/jobs/scheduler';
+import { triggerDailyRun } from '@/server/jobs/scheduler';
 
 // GET /api/v1/runs - List run history
 export async function GET(request: NextRequest) {

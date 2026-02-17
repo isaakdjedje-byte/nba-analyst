@@ -10,48 +10,46 @@ import { createDecision, createRun, createMatch } from '../support/factories';
 
 test.describe('Audit Logs', () => {
   test.beforeEach(async ({ page }) => {
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     // Wait for either timeline or empty state
-    await expect(page.getByTestId('logs-timeline').or(page.getByTestId('logs-empty'))).toBeVisible({ timeout: 10000 });
-    // Wait for timeline to be visible (may not exist if no logs)
-    await page.getByTestId('logs-timeline').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {
-      // Timeline may not be visible if empty state is shown - that's OK
-    });
+    await expect(page.getByTestId('logs-timeline').or(page.getByTestId('logs-empty'))).toBeVisible();
   });
 
-  test('should display decision history', async ({ page }) => {
+  test('[P1] [1.4-LOG-001] should display decision history', async ({ page }) => {
     // Given the user is on the logs page
     // Then the decision history should be visible
     await expect(page.getByTestId('logs-timeline')).toBeVisible();
   });
 
-  test('should filter logs by date range', async ({ page }) => {
+  test('[P1] [1.4-LOG-002] should filter logs by date range', async ({ page }) => {
     // When the user selects a date range
     await page.getByTestId('date-from').fill('2026-02-01');
     await page.getByTestId('date-to').fill('2026-02-12');
     await page.getByTestId('apply-filter').click();
-    await page.waitForResponse(resp => resp.url().includes('/api/logs') && resp.status() === 200).catch(() => {});
+    await page.waitForResponse(resp => resp.url().includes('/api/logs') && resp.status() === 200);
 
     // Then filtered logs should be displayed
     await expect(page.getByTestId('filter-active')).toBeVisible();
   });
 
-  test('should show log details', async ({ page, request }) => {
+  test('[P2] [1.4-LOG-003] should show log details', async ({ page, request }) => {
     // Given log entries exist via API setup
     const match = createMatch();
     const decision = createDecision({ matchId: match.id });
     
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
     expect(createResponse.status()).toBe(201);
     
     // Refresh page to see new log entry
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
     const firstLog = page.getByTestId('log-entry').first();
     const logCount = await firstLog.count();
@@ -65,15 +63,15 @@ test.describe('Audit Logs', () => {
     await firstLog.click();
 
     // Then log details should be visible
-    await expect(page.getByTestId('log-detail-panel')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('log-detail-panel')).toBeVisible();
   });
 
-  test('should search logs by trace ID', async ({ page }) => {
+  test('[P2] [1.4-LOG-004] should search logs by trace ID', async ({ page }) => {
     // When the user searches for a specific trace ID
     const traceId = 'trace-123';
     await page.getByTestId('trace-search').fill(traceId);
     await page.getByTestId('search-submit').click();
-    await page.waitForResponse(resp => resp.url().includes('/api/logs')).catch(() => {});
+    await page.waitForResponse(resp => resp.url().includes('/api/logs'));
 
     // Then logs with that trace ID should be displayed
     await expect(page.getByTestId('search-results')).toBeVisible();
@@ -81,10 +79,11 @@ test.describe('Audit Logs', () => {
 });
 
 test.describe('Decision Replay', () => {
-  test('should replay a past decision', async ({ page }) => {
+  test('[P1] [1.4-REP-001] should replay a past decision', async ({ page }) => {
     // Given a decision exists in the system
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // When the user requests a replay
     const replayBtn = page.getByTestId('replay-btn').first();
@@ -97,13 +96,14 @@ test.describe('Decision Replay', () => {
     await replayBtn.click();
 
     // Then the replay modal should open
-    await expect(page.getByTestId('replay-modal')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('replay-modal')).toBeVisible();
   });
 
-  test('should show replay results', async ({ page }) => {
+  test('[P2] [1.4-REP-002] should show replay results', async ({ page }) => {
     // Given a replay is in progress
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
     const replayBtn = page.getByTestId('replay-btn').first();
     const replayCount = await replayBtn.count();
@@ -113,20 +113,21 @@ test.describe('Decision Replay', () => {
     }
     
     await replayBtn.click();
-    await page.waitForResponse(resp => resp.url().includes('/api/replay')).catch(() => {});
+    await page.waitForResponse(resp => resp.url().includes('/api/replay'));
 
     // When the replay completes
     // Then the replay results should be displayed
     const replayComplete = page.getByTestId('replay-complete');
     const replayComparison = page.getByTestId('replay-comparison');
-    await expect(replayComplete.or(replayComparison).first()).toBeVisible({ timeout: 5000 });
+    await expect(replayComplete.or(replayComparison).first()).toBeVisible();
   });
 
-  test('should allow investigation of contested decisions', async ({ page }) => {
+  test('[P2] [1.4-REP-003] should allow investigation of contested decisions', async ({ page }) => {
     // Given a contested decision exists
     // Navigate to logs with contested filter
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs?filter=contested');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // Then contested indicators should be visible (if any contested decisions exist)
     const contestedBadge = page.getByTestId('contested-badge');
@@ -138,26 +139,28 @@ test.describe('Decision Replay', () => {
 });
 
 test.describe('Run History', () => {
-  test('should display daily runs', async ({ page }) => {
+  test('[P1] [1.4-RUN-001] should display daily runs', async ({ page }) => {
     // Given runs exist in the system
     // When viewing runs
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
     await page.getByTestId('runs-tab').click();
-    await page.waitForResponse(resp => resp.url().includes('/api/runs')).catch(() => {});
+    await page.waitForResponse(resp => resp.url().includes('/api/v1/runs'));
 
     // Then runs should be displayed
     await expect(page.getByTestId('runs-section')).toBeVisible();
   });
 
-  test('should show run details', async ({ page }) => {
+  test('[P2] [1.4-RUN-002] should show run details', async ({ page }) => {
     // Given runs exist
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
     await page.getByTestId('runs-tab').click();
-    await page.waitForResponse(resp => resp.url().includes('/api/runs')).catch(() => {});
+    await page.waitForResponse(resp => resp.url().includes('/api/v1/runs'));
 
     // When clicking on a run
     const runEntry = page.getByTestId('run-entry').first();
@@ -170,12 +173,12 @@ test.describe('Run History', () => {
     await runEntry.click();
 
     // Then run details should be visible
-    await expect(page.getByTestId('run-detail-panel')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('run-detail-panel')).toBeVisible();
   });
 });
 
 test.describe('Audit Trail Compliance', () => {
-  test('should track all decisions with trace IDs', async ({ page, request }) => {
+  test('[P0] [1.4-AUD-001] should track all decisions with trace IDs', async ({ page, request }) => {
     // When querying the audit API
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     const response = await request.get(`${baseUrl}/api/logs/audit`);
@@ -186,7 +189,7 @@ test.describe('Audit Trail Compliance', () => {
     expect(body.entries || body.logs || body).toBeDefined();
   });
 
-  test('should support time-based queries', async ({ page, request }) => {
+  test('[P1] [1.4-AUD-002] should support time-based queries', async ({ page, request }) => {
     // When querying logs with time range
     const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const to = new Date().toISOString();

@@ -5,8 +5,9 @@
  * Story 2.7: Implement fallback strategy and degraded no-bet mode
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SourceHealthMonitor, createSourceHealthMonitor, SourceHealthCheckResult } from '@/server/ml/orchestration';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createSourceHealthMonitor } from '@/server/ml/orchestration';
+import type { Logger } from 'pino';
 
 const mockLogger = {
   info: vi.fn(),
@@ -14,7 +15,7 @@ const mockLogger = {
   error: vi.fn(),
   debug: vi.fn(),
   child: vi.fn(() => mockLogger),
-};
+} as unknown as Logger;
 
 describe('SourceHealthMonitor', () => {
   let healthCheckFn: ReturnType<typeof vi.fn>;
@@ -30,7 +31,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a', 'source-b'],
         healthCheckFn,
-        mockLogger as any
+        mockLogger
       );
 
       // Assert
@@ -54,7 +55,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any,
+        mockLogger,
         { maxConsecutiveFailures: 1 }
       );
 
@@ -79,7 +80,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any
+        mockLogger
       );
 
       // Make source unhealthy first
@@ -116,7 +117,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any,
+        mockLogger,
         { maxConsecutiveFailures: 1 }
       );
 
@@ -140,7 +141,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a', 'source-b'],
         healthCheckFn,
-        mockLogger as any
+        mockLogger
       );
 
       // Assert
@@ -158,7 +159,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a', 'source-b'],
         healthCheckFn,
-        mockLogger as any,
+        mockLogger,
         { maxConsecutiveFailures: 1 }
       );
 
@@ -184,7 +185,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a', 'source-b'],
         healthCheckFn,
-        mockLogger as any,
+        mockLogger,
         { maxConsecutiveFailures: 1 }
       );
 
@@ -204,7 +205,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any
+        mockLogger
       );
 
       // Act & Assert
@@ -219,7 +220,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any
+        mockLogger
       );
 
       // Assert
@@ -244,7 +245,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any,
+        mockLogger,
         { maxConsecutiveFailures: 1 }
       );
 
@@ -271,7 +272,7 @@ describe('SourceHealthMonitor', () => {
       const monitor = createSourceHealthMonitor(
         ['source-a'],
         healthCheckFn,
-        mockLogger as any
+        mockLogger
       );
 
       // Make unhealthy
@@ -296,7 +297,7 @@ describe('createSourceHealthMonitor', () => {
     const monitor = createSourceHealthMonitor(
       ['source-a'],
       vi.fn(),
-      mockLogger as any
+      mockLogger
     );
 
     // Assert
@@ -310,7 +311,7 @@ describe('createSourceHealthMonitor', () => {
     const monitor = createSourceHealthMonitor(
       ['source-a', 'source-b'],
       vi.fn(),
-      mockLogger as any,
+      mockLogger,
       {
         checkIntervalMs: 30000,
         maxConsecutiveFailures: 5,

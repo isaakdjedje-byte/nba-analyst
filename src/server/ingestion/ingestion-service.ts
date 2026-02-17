@@ -1,12 +1,11 @@
 import {
-  BaseProvider,
   ProviderConfig,
   createProvider,
   getProvider,
   getProvidersHealth,
   ProviderType,
 } from './providers';
-import { detectDrift, validateAgainstBaseline } from './drift/detector';
+import { detectDrift } from './drift/detector';
 import { ValidationContext, ValidationResult, validateSchema } from './schema/validation';
 import { ZodSchema } from 'zod';
 import { sendAlert, createDriftAlert, createFailureAlert, AlertConfig } from './alerting';

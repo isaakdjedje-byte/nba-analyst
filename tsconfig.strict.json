@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true
+  },
+  "include": [
+    "src/middleware.ts",
+    "src/server/auth/auth-options.ts",
+    "src/server/auth/rate-limit.ts",
+    "src/server/cache/rate-limiter.ts",
+    "src/server/ml/prediction/prediction-service.ts",
+    "src/app/api/auth/login/route.ts",
+    "src/app/api/auth/me/route.ts",
+    "src/app/api/v1/decisions/route.ts",
+    "src/app/api/v1/b2b/_base.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "dist",
+    "tests",
+    "e2e",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx"
+  ]
+}

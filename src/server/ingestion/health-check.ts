@@ -1,5 +1,5 @@
 import { BaseProvider } from './providers/base-provider';
-import { createProvider, ProviderType, getProvider } from './providers';
+import { ProviderType, getProvider } from './providers';
 
 /**
  * Health Check Service for Data Providers
@@ -57,7 +57,6 @@ export async function checkAllProvidersHealth(
   configs: { type: ProviderType; name: string; config: { baseUrl: string; apiKey?: string } }[]
 ): Promise<SystemHealthResult> {
   const results: ProviderHealthResult[] = [];
-  let healthyCount = 0;
   let degradedCount = 0;
   let unhealthyCount = 0;
 
@@ -82,7 +81,7 @@ export async function checkAllProvidersHealth(
     results.push(result);
 
     if (result.healthy && result.latency < 1000) {
-      healthyCount++;
+      // healthy provider
     } else if (result.healthy) {
       degradedCount++;
     } else {

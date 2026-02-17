@@ -164,7 +164,7 @@ describe('Predictions Repository - Type Validation', () => {
         featuresHash: 'abc123',
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      } as unknown as never);
 
       const input: PredictionCreateInput = {
         matchId: 'match-123',
@@ -192,7 +192,7 @@ describe('Predictions Repository - Type Validation', () => {
         matchId: 'match-123',
         confidence: 0.85,
         modelVersion: 'v1.0.0',
-      } as any);
+      } as unknown as never);
 
       const result = await getPredictionById('pred-123');
 

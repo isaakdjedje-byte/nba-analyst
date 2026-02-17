@@ -7,13 +7,27 @@
  * Test IDs: MFA-API-001 through MFA-API-012
  * 
  * SKIPPED: Epic 4 not yet implemented
- * Re-enable when Epic 4 (Performance, logs et replay d'audit) is active
+ * 
+ * @epic 4
+ * @tracked false
+ * @re-enable When Epic 4 starts - verify MFA endpoints exist first
+ * @priority P0 (security-critical)
+ * 
+ * Coverage:
+ * - MFA token verification (POST /api/auth/mfa)
+ * - MFA setup/enable (POST /api/auth/mfa/setup)
+ * - MFA disable (DELETE /api/auth/mfa)
+ * - MFA backup codes (GET /api/auth/mfa/backup-codes)
+ * - MFA validation errors
+ * 
+ * TODO: [Epic-4] Re-enable these tests when MFA endpoints are implemented
+ * TODO: [Epic-4] Add tests for MFA QR code generation
+ * TODO: [Epic-4] Add tests for MFA bypass (admin)
  */
 
 import { test, expect } from '@playwright/test';
-import { createUser, createAdminUser } from '../support/factories';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000';
 
 test.describe.skip('MFA API Tests @api @mfa @security @epic4', () => {
   // ==========================================

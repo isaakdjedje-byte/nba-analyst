@@ -130,6 +130,8 @@ export type Run = {
   decisionsCount: number;
   errorsCount: number;
   traceId: string;
+  source?: string;
+  failureReason?: string;
 };
 
 export const createRun = (overrides: Partial<Run> = {}): Run => ({
@@ -150,6 +152,8 @@ export const createFailedRun = (overrides: Partial<Run> = {}): Run =>
     status: 'failed',
     completedAt: undefined,
     errorsCount: faker.number.int({ min: 1, max: 5 }),
+    source: overrides.source ?? 'primary-model',
+    failureReason: overrides.failureReason ?? 'timeout',
     ...overrides,
   });
 
@@ -182,3 +186,69 @@ export const createMatch = (overrides: Partial<Match> = {}): Match => ({
   status: 'scheduled',
   ...overrides,
 });
+
+// ============================================
+// HardStop State Factory
+// For Story 3.7 - GuardrailBanner tests
+// ============================================
+
+export type HardStopState = {
+  isActive: boolean;
+  triggeredAt?: string;
+  triggerReason?: string;
+  currentState: {
+    dailyLoss: number;
+    consecutiveLosses: number;
+    bankrollPercent: number;
+  };
+  limits: {
+    dailyLossLimit: number;
+    consecutiveLosses: number;
+    bankrollPercent: number;
+  };
+  recommendedAction: string;
+};
+
+export const createHardStopState = (overrides: Partial<HardStopState> = {}): HardStopState => ({
+  isActive: true,
+  triggeredAt: new Date().toISOString(),
+  triggerReason: faker.helpers.arrayElement([
+    'Daily loss limit exceeded',
+    'Consecutive losses limit reached',
+    'Bankroll percentage threshold crossed',
+  ]),
+  currentState: {
+    dailyLoss: faker.number.float({ min: 500, max: 1000 }),
+    consecutiveLosses: faker.number.int({ min: 3, max: 5 }),
+    bankrollPercent: faker.number.float({ min: 15, max: 25 }),
+  },
+  limits: {
+    dailyLossLimit: 500,
+    consecutiveLosses: 3,
+    bankrollPercent: 15,
+  },
+  recommendedAction: 'Pause trading and review strategy',
+  ...overrides,
+});
+
+// Specialized hardstop factories
+export const createInactiveHardStop = (overrides: Partial<HardStopState> = {}): HardStopState =>
+  createHardStopState({
+    isActive: false,
+    triggerReason: undefined,
+    triggeredAt: undefined,
+    ...overrides,
+  });
+
+export const createResetHardStop = (overrides: Partial<HardStopState> = {}): HardStopState =>
+  createHardStopState({
+    isActive: false,
+    triggerReason: undefined,
+    triggeredAt: undefined,
+    currentState: {
+      dailyLoss: 0,
+      consecutiveLosses: 0,
+      bankrollPercent: 0,
+    },
+    ...overrides,
+  });

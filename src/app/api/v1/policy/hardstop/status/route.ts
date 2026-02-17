@@ -9,6 +9,7 @@
 
 import { NextResponse } from 'next/server';
 import { getHardStopStatus } from '@/jobs/daily-run-job';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * GET /api/v1/policy/hardstop/status
@@ -24,16 +25,19 @@ import { getHardStopStatus } from '@/jobs/daily-run-job';
 export async function GET() {
   try {
     const status = await getHardStopStatus();
-    
+    const traceId = uuidv4();
+
     return NextResponse.json({
       data: status,
       meta: {
         timestamp: new Date().toISOString(),
+        traceId,
       },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    
+    const traceId = uuidv4();
+
     return NextResponse.json(
       {
         error: {
@@ -43,6 +47,7 @@ export async function GET() {
         },
         meta: {
           timestamp: new Date().toISOString(),
+          traceId,
         },
       },
       { status: 500 }

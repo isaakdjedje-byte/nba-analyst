@@ -148,7 +148,7 @@ export class OddsSecondaryProvider extends BaseProvider {
         healthy: true,
         latency: Date.now() - startTime,
       };
-    } catch (error) {
+    } catch {
       return {
         healthy: false,
         latency: Date.now() - startTime,

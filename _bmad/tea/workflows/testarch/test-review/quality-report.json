@@ -1,0 +1,179 @@
+{
+  "workflow": "testarch-test-review",
+  "version": "5.0",
+  "date": "2026-02-13",
+  "scope": "suite",
+  "summary": {
+    "total_files_analyzed": 25,
+    "total_tests": 38,
+    "overall_quality_score": 78,
+    "grade": "B+",
+    "status": "PASS_WITH_WARNINGS"
+  },
+  "quality_score_breakdown": {
+    "naming_conventions": 95,
+    "test_structure": 85,
+    "assertions": 90,
+    "fixtures_cleanup": 80,
+    "determinism": 65,
+    "performance": 75
+  },
+  "findings": {
+    "blocker": [
+      {
+        "file": "tests/api/policy-evaluation-edge.spec.ts",
+        "line": 313,
+        "issue": "FILE_TOO_LARGE",
+        "description": "File exceeds 300 line limit (313 lines)",
+        "impact": "Difficult to understand and maintain",
+        "remediation": "Split into multiple focused test files (<300 lines each)"
+      }
+    ],
+    "warning": [
+      {
+        "file": "tests/e2e/no-bet-page.spec.ts",
+        "lines": [20, 33, 49, 65, 76],
+        "issue": "HARD_WAITS",
+        "description": "Uses waitForTimeout() - 5 instances found",
+        "impact": "Non-deterministic waits slow tests and cause flakiness",
+        "remediation": "Replace with waitForResponse() or element state checks"
+      },
+      {
+        "file": "tests/e2e/no-bet-hard-stop.spec.ts",
+        "lines": [55, 69],
+        "issue": "TEST_SKIP",
+        "description": "Uses test.skip() for conditional test execution",
+        "impact": "Tests may be skipped silently, reducing coverage confidence",
+        "remediation": "Use proper test data setup to ensure consistent test conditions"
+      },
+      {
+        "file": "tests/e2e/logs-replay.spec.ts",
+        "lines": [41, 71, 85, 136],
+        "issue": "TEST_SKIP",
+        "description": "Uses test.skip() - 4 instances",
+        "impact": "Conditional test execution reduces reliability",
+        "remediation": "Ensure test data availability or use deterministic mocks"
+      },
+      {
+        "file": "tests/e2e/rgpd-account-deletion-e2e.spec.ts",
+        "lines": [18, 35, 41, 89],
+        "issue": "CONDITIONAL_FLOW",
+        "description": "Uses if() with catch() for element visibility checks",
+        "impact": "Non-deterministic test flow",
+        "remediation": "Use expect().toBeVisible() with proper test data setup"
+      },
+      {
+        "file": "tests/e2e/no-bet-page.spec.ts",
+        "lines": [25, 37, 54, 70, 82, 83],
+        "issue": "CONDITIONAL_FLOW",
+        "description": "Multiple if() conditionals for element visibility",
+        "impact": "Test behavior varies based on runtime conditions",
+        "remediation": "Ensure consistent test state via API setup"
+      }
+    ],
+    "info": [
+      {
+        "file": "tests/e2e/dashboard-picks.spec.ts",
+        "lines": [12, 61],
+        "issue": "WAIT_FOR_SELECTOR_TIMEOUT",
+        "description": "Uses waitForSelector with timeout (acceptable pattern)",
+        "impact": "Low - explicit timeout is acceptable",
+        "remediation": "Consider using expect().toBeVisible() instead"
+      },
+      {
+        "file": "Multiple files",
+        "issue": "CATCH_FOR_CLEANUP",
+        "description": "Uses .catch(() => {}) for cleanup operations",
+        "impact": "Acceptable for cleanup - prevents cleanup failures from breaking tests",
+        "remediation": "None needed - appropriate use pattern"
+      }
+    ]
+  },
+  "test_level_distribution": {
+    "e2e": {
+      "count": 16,
+      "avg_lines": 85,
+      "issues": 8
+    },
+    "api": {
+      "count": 9,
+      "avg_lines": 120,
+      "issues": 1
+    },
+    "unit": {
+      "count": 13,
+      "avg_lines": 95,
+      "issues": 0
+    }
+  },
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "action": "Refactor tests/e2e/no-bet-page.spec.ts - Remove 5 hard waits",
+      "effort": "2 hours",
+      "impact": "Improves determinism and reduces test duration"
+    },
+    {
+      "priority": "HIGH",
+      "action": "Split tests/api/policy-evaluation-edge.spec.ts into multiple files",
+      "effort": "1 hour",
+      "impact": "Improves maintainability and readability"
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Refactor conditional tests in rgpd-account-deletion-e2e.spec.ts",
+      "effort": "2 hours",
+      "impact": "Ensures consistent test execution"
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Review test.skip() usage - ensure critical paths are always tested",
+      "effort": "1 hour",
+      "impact": "Improves coverage confidence"
+    },
+    {
+      "priority": "LOW",
+      "action": "Add explicit assertions for all API response validations",
+      "effort": "3 hours",
+      "impact": "Improves test clarity and debugging"
+    }
+  ],
+  "compliance_checklist": {
+    "no_hard_waits": {
+      "status": "PARTIAL",
+      "compliance": "85%",
+      "violations": 5
+    },
+    "no_conditionals": {
+      "status": "PARTIAL",
+      "compliance": "75%",
+      "violations": 8
+    },
+    "file_size_under_300": {
+      "status": "PARTIAL",
+      "compliance": "96%",
+      "violations": 1
+    },
+    "explicit_assertions": {
+      "status": "PASS",
+      "compliance": "95%",
+      "violations": 2
+    },
+    "self_cleaning": {
+      "status": "PASS",
+      "compliance": "90%",
+      "violations": 0
+    },
+    "test_duration_under_90s": {
+      "status": "PASS",
+      "compliance": "100%",
+      "violations": 0
+    }
+  },
+  "next_steps": [
+    "Address 1 BLOCKER issue (file too large)",
+    "Address 5 WARNING issues (hard waits, conditionals, test.skip)",
+    "Re-run test-review after fixes to verify improvement",
+    "Consider implementing automated linting rules for test quality"
+  ]
+}

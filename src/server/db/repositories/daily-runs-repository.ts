@@ -8,7 +8,7 @@
  */
 
 import { prisma } from '@/server/db/client';
-import { RepositoryError } from './predictions-repository';
+import type { Prisma } from '@prisma/client';
 
 // Re-export the RunStatus enum type
 export type RunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
@@ -97,7 +97,7 @@ const dailyRunSelect = {
 export async function createDailyRun(
   input: DailyRunCreateInput
 ): Promise<DailyRunWithRelations> {
-  const data: any = {
+  const data: Prisma.DailyRunCreateInput = {
     runDate: input.runDate,
     status: input.status,
     triggeredBy: input.triggeredBy,
@@ -186,7 +186,7 @@ export async function updateDailyRun(
   id: string,
   input: DailyRunUpdateInput
 ): Promise<DailyRunWithRelations | null> {
-  const data: any = {};
+  const data: Prisma.DailyRunUpdateInput = {};
 
   if (input.status !== undefined) {
     data.status = input.status;
@@ -260,7 +260,7 @@ export async function updateRunStats(
   id: string,
   decisionStatus: 'PICK' | 'NO_BET' | 'HARD_STOP'
 ): Promise<void> {
-  const data: any = {};
+  const data: Prisma.DailyRunUpdateInput = {};
 
   switch (decisionStatus) {
     case 'PICK':

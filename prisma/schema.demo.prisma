@@ -1,0 +1,131 @@
+// Prisma Schema for Demo (SQLite) - Complete with Epic 2 models
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Role enum as string for SQLite
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  role          String    @default("user")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  predictions     Prediction[]
+  dailyRuns       DailyRun[]
+  auditLogs       AuditLog[]
+}
+
+model DailyRun {
+  id                String   @id @default(uuid())
+  runDate           DateTime
+  status            String   @default("PENDING")
+  startedAt         DateTime?
+  completedAt       DateTime?
+  totalMatches      Int      @default(0)
+  predictionsCount  Int      @default(0)
+  picksCount        Int      @default(0)
+  noBetCount        Int      @default(0)
+  hardStopCount     Int      @default(0)
+  dataQualityScore  Float?
+  errors            String?
+  triggeredBy       String
+  traceId           String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  predictions       Prediction[]
+  policyDecisions   PolicyDecision[]
+}
+
+model Prediction {
+  id                  String   @id @default(uuid())
+  matchId             String
+  matchDate           DateTime
+  league              String
+  homeTeam            String
+  awayTeam            String
+  winnerPrediction    String?
+  scorePrediction     String?
+  overUnderPrediction Float?
+  confidence          Float
+  modelVersion        String
+  featuresHash        String?
+  edge                Float?
+  status              String   @default("pending")
+  traceId             String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  runId               String
+  run                 DailyRun @relation(fields: [runId], references: [id])
+  policyDecision      PolicyDecision?
+}
+
+model PolicyDecision {
+  id                  String   @id @default(uuid())
+  predictionId        String   @unique
+  matchId             String
+  status              String
+  rationale           String
+  confidenceGate      Boolean
+  edgeGate            Boolean
+  driftGate           Boolean
+  hardStopGate        Boolean
+  hardStopReason      String?
+  recommendedAction   String?
+  matchDate           DateTime
+  homeTeam            String
+  awayTeam            String
+  confidence          Float
+  edge                Float?
+  modelVersion        String
+  predictionInputs    String?
+  traceId             String
+  executedAt          DateTime @default(now())
+  runId               String
+  userId              String
+  run                 DailyRun @relation(fields: [runId], references: [id])
+  prediction          Prediction @relation(fields: [predictionId], references: [id])
+}
+
+model HardStopState {
+  id                  String   @id @default(uuid())
+  isActive            Boolean  @default(false)
+  dailyLoss           Float    @default(0)
+  consecutiveLosses   Int      @default(0)
+  bankrollPercent     Float    @default(0)
+  lastResetAt         DateTime @default(now())
+  triggeredAt         DateTime?
+  triggerReason       String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  actorId     String
+  action      String
+  targetId    String?
+  targetType  String?
+  oldValue    String?
+  newValue    String?
+  metadata    String?
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime  @default(now())
+  traceId     String
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+}

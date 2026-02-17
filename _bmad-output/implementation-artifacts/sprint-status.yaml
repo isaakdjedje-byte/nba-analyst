@@ -1,0 +1,105 @@
+# generated: 2026-02-13
+# project: nba-analyst
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: "2026-02-13"
+project: nba-analyst
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Acces securise et gouvernance utilisateur
+  epic-1: done  # ✅ All stories completed, CI/CD fixed with epic-scoped test strategy 2026-02-13
+  1-1-initialiser-le-projet-next-js-avec-structure-de-base: done
+  1-2-configurer-l-authentification-nextauth-avec-email-password: done
+  1-3-implementer-le-controle-d-acces-base-sur-les-roles-rbac: done
+  1-4-ajouter-l-authentification-multi-facteur-pour-admin-ops: done  # ✅ Code review completed, all fixes applied, tests passing, build successful 2026-02-13
+  1-5-configurer-la-gestion-rgpd-des-donnees-utilisateur: done  # ✅ Code review completed, all CRITICAL fixes applied, status: done 2026-02-13
+  epic-1-retrospective: done  # ✅ Retrospective completed 2026-02-13 - Actions defined, preparation sprint planned
+
+  # Epic 2: Production decisionnelle fiable (data -> decision)
+  epic-2: in-progress  # 🔄 Reactivated for prep stories 2-10, 2-11 (Epic 3 readiness)
+  2-1-configurer-la-base-de-donnees-postgresql-avec-prisma: done  # ✅ Code review completed, all fixes applied 2026-02-13
+  2-2-configurer-le-cache-redis-pour-decision-views-et-rate-limiting: done  # ✅ Code review completed, fixes applied 2026-02-13
+  2-3-implementer-les-integrations-sources-data-odds-day-1: done  # ✅ Code review completed, 13 issues fixed (ESPN provider, rate limiting, alerting, API endpoints, integration tests, docs) 2026-02-13
+  2-4-creer-le-modele-de-donnees-pour-predictions-et-decisions: done  # ✅ Code review completed, 7 issues fixed (TypeScript any types, git tracking, mapper safety) 2026-02-14
+  2-5-implementer-le-policy-engine-central-single-source-of-truth: done  # ✅ Code review completed, RBAC protection added, all fixes applied 2026-02-13
+  2-6-implementer-les-hard-stops-bloquants-avec-enforcement-100: done  # ✅ Code review completed, all fixes applied 2026-02-14
+  2-7-implementer-la-strategie-de-fallback-et-mode-degrade-no-bet: done  # ✅ Code review completed, all fixes applied 2026-02-14
+  2-8-implementer-le-run-quotidien-de-production-de-decisions: done  # ✅ Code review completed, fixed test failures, status mapping bug 2026-02-14
+  2-9-implementer-l-historique-et-conservation-des-decisions: done  # ✅ Story completed: all tasks done, tests and docs added 2026-02-14
+  epic-2-retrospective: done  # ✅ Retrospective completed 2026-02-14 - E2E gaps identified, prep stories 2.10 and 2.11 added for Epic 3 readiness
+
+  # Epic 2 Preparation (for Epic 3 readiness)
+  2-10-implementer-les-tests-e2e-du-pipeline-daily-run: done  # ✅ Code review completed, 12 issues fixed, all files committed 2026-02-14
+  2-11-implementer-les-tests-e2e-de-l-api-hard-stop: done  # ✅ Code review completed, 4 issues fixed and committed 2026-02-14
+
+  # Epic 3: Experience Picks/No-Bet explicable (mobile-first)
+  epic-3: done  # ✅ All 10 stories completed 2026-02-15
+  3-1-creer-la-structure-dashboard-avec-navigation-picks-no-bet-performance-logs: done  # ✅ Dashboard layout with navigation implemented, build successful, E2E AC4 passing 2026-02-14
+  3-2-implementer-la-vue-picks-avec-liste-des-decisions-du-jour: done  # ✅ Code review completed, 8 issues fixed, all files committed 2026-02-14
+  3-3-creer-le-composant-decisioncard-avec-statut-explicite: done  # ✅ Code review completed, 4 issues fixed (responsive detection, keyboard nav, null-safety, docs) 2026-02-14
+  3-4-implementer-le-rationalepanel-avec-justification-courte: done  # ✅ Code review completed, 5 issues fixed (imports, exports, edge handling, test config). 2 action items added for jsdom env.
+  3-5-ajouter-le-panneau-de-details-extensible: done  # ✅ Code review completed: 4 HIGH/CRITICAL issues fixed (focus management, aria-live, E2E tests activation, clipboard error handling). Story status: done 2026-02-14
+  3-6-implementer-le-composant-statusbadge-avec-semantique-stricte: done  # ✅ Code review completed: 9 issues found, 8 fixed (CRITICAL: WCAG contrast, HIGH: dark mode classes, touch targets, data-testid). Status: done 2026-02-15
+  3-7-creer-le-composant-guardrailbanner-pour-etat-global: done  # ✅ Code review completed: 9 CRITICAL/HIGH/MEDIUM issues fixed (E2E tests unskipped, no-bet integration, old file removed), status: done 2026-02-15
+  3-8-implementer-le-responsive-mobile-first-2-min-parcours: done  # ✅ Code review completed 2026-02-15: Round 2 - 9 issues fixed (25 E2E tests unskipped, viewport maxScale=1.3, measureTTI improved)
+  3-9-implementer-les-etats-ux-critiques-loading-empty-degraded-blocked: done  # ✅ Code review completed, all fixes applied, 55 tests passing 2026-02-15
+  3-10-implementer-le-dark-mode-avec-coherence-semantique: done  # ✅ Code review completed: 4 issues fixed (system preference listener, CSS optimization), 16 unit tests, committed 2026-02-15
+  epic-3-retrospective: done  # ✅ Retrospective completed 2026-02-15 - 3 actions defined, 4 prep tasks for Epic 4
+
+  # Epic 4: Performance, logs et replay d'audit
+  epic-4: in-progress  # First story 4-1 being created
+  4-1-creer-la-vue-performance-avec-historique-des-recommandations: done  # ✅ Code review completed: 4 issues fixed (AC4 URL state, traceId in hook, types updated, E2E tests added) 2026-02-15
+  4-2-implementer-la-vue-logs-avec-historique-des-decisions: done  # ✅ Code review completed: 5 issues fixed (E2E unskipped, test IDs, data signals, session sort), build passing 2026-02-15
+  4-3-creer-le-composant-decisiontimeline-pour-replay-decisionnel: done  # ✅ Code review completed: 2 issues fixed (uuid import replaced with crypto.randomUUID(), typo fixed), build passing 2026-02-15
+  4-4-implementer-l-investigation-de-decision-contestee: done  # ✅ Code review completed: 6 issues fixed (user filter, PDF export, data quality signals, ML factors, audit logging), build passing 2026-02-15
+  4-5-implementer-les-metadonnees-d-audit-exploitables: done  # ✅ Code review completed: 7 issues fixed (Task 2 fingerprints, performance filtering, retention, IP address, docs), build passing 2026-02-15
+  epic-4-retrospective: optional
+
+  # Epic 5: Gouvernance policy operable
+  epic-5: done  # All 3 stories completed 2026-02-16
+  5-1-creer-le-panneau-d-affichage-des-causes-de-blocage-policy: done  # ✅ Code review completed: 7 issues fixed (XSS sanitization, threshold extraction, category detection, unit tests), 5 action items added for remaining integration 2026-02-15
+  5-2-implementer-l-interface-admin-de-gestion-des-parametres-policy: done  # ✅ Code review completed: 5 CRITICAL/HIGH issues fixed (config persistence, audit logging, RBAC, security events), E2E tests rewritten 2026-02-16
+  5-3-implementer-le-versioning-et-historique-des-changements-policy: done  # ✅ Code review completed: 5 issues fixed (race condition, UI integration, centralized exports, API/E2E tests) 2026-02-16
+  epic-5-retrospective: done  # ✅ Retrospective completed 2026-02-16 - 3 prep tasks for Epic 6, 3 action items defined
+
+  # Epic 6: Readiness B2B et interfaces de consultation
+  epic-6: in-progress  # Story 6-1 completed, remaining stories in backlog
+  6-1-concevoir-et-implementer-l-api-rest-v1-pour-decisions-b2b: done  # ✅ Code review completed: 3 issues fixed (Vitest, error format, env var), 28 ATDD tests activated
+  6-2-implementer-les-endpoints-d-explicabilite-pour-b2b: done  # ✅ Code review completed: 7 issues fixed (Task 3.1 unit tests added, ATDD tests unskipped, unused import removed, runtime validation added, schemas extended), build passing
+  6-3-creer-le-systeme-de-profils-policy-configurables-b2b: done  # ✅ Code review completed: 6 issues fixed (UUID validation, 404 for history, reason field, changedBy, 204 header), all fixes applied 2026-02-16
+  6-4-implementer-la-documentation-api-openapi-et-exemples: done  # Code review completed: 6 issues fixed (error examples, explain endpoint errors, DecisionStatus enum, OpenAPI 3.1.0, DELETE errors, E2E tests) 2026-02-16
+  epic-6-retrospective: done  # ✅ Retrospective completed 2026-02-16 - 8 action items, 2 critical path items

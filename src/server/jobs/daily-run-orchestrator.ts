@@ -14,18 +14,23 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcrypt';
 import { prisma } from '@/server/db/client';
 import { createIngestionService, IngestionService } from '@/server/ingestion/ingestion-service';
-import { PolicyEngine, DEFAULT_POLICY_CONFIG } from '@/server/policy/engine';
+import { DEFAULT_POLICY_CONFIG } from '@/server/policy/engine';
+import { PredictionInput } from '@/server/policy/types';
 import { createDataQualityGates, DataQualityAssessment } from '@/server/ml/orchestration/data-quality-gates';
-import { createFallbackChain, FallbackChain, FallbackLevel, FallbackAttempt } from '@/server/ml/orchestration/fallback-chain';
-import { createHardStopTracker } from '@/server/policy/hardstop-tracker';
 import { sendAlert, createFailureAlert } from '@/server/ingestion/alerting';
 import { CacheService } from '@/server/cache/cache-service';
 import { CACHE_TTL } from '@/server/cache/cache-keys';
 
 // Import existing daily run processor for policy evaluation
 import { processDailyRun, DailyRunJobConfig } from '@/jobs/daily-run-job';
+
+// Import fingerprint utilities for audit metadata (Story 4.5)
+import { createFingerprintsFromIngestion } from '@/server/audit/fingerprint-utils';
+import type { DataSourceFingerprints } from '@/server/audit/types';
+import { getPredictionService, PredictionInput as MLPredictionInput } from '@/server/ml/prediction/prediction-service';
 
 export interface PipelineConfig {
   /** Run ID in database */
@@ -38,6 +43,8 @@ export interface PipelineConfig {
   skipIngestion?: boolean;
   /** Skip ML inference phase (for testing) */
   skipMLInference?: boolean;
+  /** Data source fingerprints captured during ingestion (Story 4.5) */
+  dataSourceFingerprints?: DataSourceFingerprints;
 }
 
 export interface PipelineResult {
@@ -57,6 +64,18 @@ export interface PipelineResult {
   };
   qualityAssessment?: DataQualityAssessment;
 }
+
+interface IngestionGameRecord {
+  id: string | number;
+  date?: string | Date;
+  league?: string;
+  status?: string;
+  homeTeam?: { id?: number; name?: string };
+  awayTeam?: { id?: number; name?: string };
+  [key: string]: unknown;
+}
+
+type CreatedPrediction = Awaited<ReturnType<typeof prisma.prediction.create>>;
 
 /**
  * Execute the complete daily run pipeline
@@ -122,6 +141,21 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
         );
       }
       
+      // ============================================
+      // Story 4.5: Capture data source fingerprints for audit
+      // ============================================
+      const providerResults = Object.entries(ingestionResult.byProvider).map(([name, result]) => ({
+        providerName: name,
+        providerVersion: result.metadata?.provider || '1.0.0',
+        success: result.success,
+        recordCount: result.data ? (Array.isArray(result.data) ? result.data.length : 1) : 0,
+        qualityScore: result.success ? 1.0 : 0.0,
+      }));
+      
+      config.dataSourceFingerprints = createFingerprintsFromIngestion(providerResults);
+      
+      console.log(`[Pipeline] Captured ${config.dataSourceFingerprints.length} data source fingerprints for audit`);
+      
       // Assess data quality
       if (ingestionResult.data.length > 0) {
         const nullLogger = {
@@ -135,7 +169,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
           level: 'info',
           levels: [],
           silent: false,
-        } as any;
+        } as unknown as Parameters<typeof createDataQualityGates>[1];
         
         const dataQualityGates = createDataQualityGates({
           reliabilityThreshold: 0.5,
@@ -145,11 +179,12 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
         }, nullLogger);
         
         // Run quality assessment on first data item
-        qualityAssessment = await dataQualityGates.assess(ingestionResult.data[0], {
+        const firstDataItem = ingestionResult.data[0] as PredictionInput;
+        qualityAssessment = await dataQualityGates.assess(firstDataItem, {
           id: 'quality-check',
           name: 'Quality Check',
           version: '1.0',
-        } as any);
+        });
         
         console.log(`[Pipeline] Data quality score: ${qualityAssessment.overallScore.toFixed(2)}`);
         
@@ -314,26 +349,210 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
 }
 
 /**
- * Generate predictions for today's matches
+ * Generate predictions for today's matches using ESPN API
  * 
- * In production, this would call actual ML models.
- * For now, it creates placeholder predictions for testing.
+ * 1. Fetch today's NBA games from ESPN
+ * 2. Generate ML predictions using a simple algorithm (or call external ML service)
+ * 3. Store predictions in database for policy evaluation
  */
 async function generatePredictions(runId: string, runDate: Date, traceId: string): Promise<number> {
-  // Check if there are any matches scheduled for today
-  // In production, this would query the database for today's games
+  console.log(`[Pipeline] Generating predictions for ${runDate.toISOString().split('T')[0]}`);
   
-  // For now, we'll return 0 predictions if no matches exist
-  // In a real implementation, this would:
-  // 1. Query for today's NBA games
-  // 2. Call ML models to generate predictions
-  // 3. Store predictions in the database
+  try {
+    // Get or create system user for auto-generated predictions
+    const systemUser = await prisma.user.upsert({
+      where: { email: 'system@nba-analyst.local' },
+      update: {},
+      create: {
+        email: 'system@nba-analyst.local',
+        password: await bcrypt.hash(uuidv4(), 10), // Random password
+        role: 'ops',
+        privacyPolicyAcceptedAt: new Date(),
+        privacyPolicyVersion: '1.0.0',
+      },
+    });
+    
+    // Fetch matches from ESPN
+    const ingestionService = createIngestionService();
+    const ingestionResult = await ingestionService.ingestFromAll();
+    
+    if (ingestionResult.summary.successful === 0) {
+      console.log('[Pipeline] No data sources available, cannot generate predictions');
+      return 0;
+    }
+    
+    // Extract games from ingestion results
+    const games: IngestionGameRecord[] = [];
+    for (const [providerName, result] of Object.entries(ingestionResult.byProvider)) {
+      if (result.success && result.data && Array.isArray(result.data)) {
+        games.push(...result.data.map((game: IngestionGameRecord) => ({
+          ...game,
+          sourceProvider: providerName,
+        })));
+      }
+    }
+    
+    if (games.length === 0) {
+      console.log('[Pipeline] No games found for today');
+      return 0;
+    }
+    
+    console.log(`[Pipeline] Found ${games.length} games, generating predictions...`);
+    
+    // Generate predictions for each game
+    let predictionsCreated = 0;
+    
+    for (const game of games) {
+      try {
+        // Skip games that are not scheduled or already completed
+        if (game.status === 'completed' || game.status === 'cancelled') {
+          console.log(`[Pipeline] Skipping ${game.status} game: ${game.id}`);
+          continue;
+        }
+        
+        // Generate ML prediction using a simple algorithm
+        // In production, this would call an actual ML model API
+        const prediction = await generateMLPrediction(game, systemUser.id, runId, traceId);
+        
+        if (prediction) {
+          predictionsCreated++;
+        }
+      } catch (gameError) {
+        console.error(`[Pipeline] Error processing game ${game.id}:`, gameError);
+      }
+    }
+    
+    console.log(`[Pipeline] Created ${predictionsCreated} predictions`);
+    return predictionsCreated;
+    
+  } catch (error) {
+    console.error('[Pipeline] Error generating predictions:', error);
+    return 0;
+  }
+}
+
+/**
+ * Generate ML prediction for a single game
+ * 
+ * Uses the trained ML model with feature engineering.
+ * Falls back to baseline algorithm if model unavailable.
+ */
+async function generateMLPrediction(
+  game: IngestionGameRecord,
+  userId: string,
+  runId: string,
+  traceId: string
+): Promise<CreatedPrediction | null> {
+  const homeTeam = game.homeTeam;
+  const awayTeam = game.awayTeam;
   
-  console.log(`[Pipeline] Checking for matches on ${runDate.toISOString().split('T')[0]}`);
+  if (!homeTeam || !awayTeam) {
+    console.warn(`[Pipeline] Missing team data for game ${game.id}`);
+    return null;
+  }
   
-  // TODO: Implement actual prediction generation
-  // For now, return 0 to indicate no predictions generated
-  return 0;
+  try {
+    // Use real ML prediction service
+    const predictionService = getPredictionService();
+    
+    const predictionInput: MLPredictionInput = {
+      gameId: typeof game.id === 'string' ? parseInt(game.id) : game.id,
+      homeTeamId: homeTeam.id || 1,
+      awayTeamId: awayTeam.id || 2,
+      homeTeamName: homeTeam.name || 'Home',
+      awayTeamName: awayTeam.name || 'Away',
+      scheduledAt: game.date ? new Date(game.date) : new Date(),
+    };
+    
+    const prediction = await predictionService.predict(predictionInput);
+    
+    // Create prediction in database with ML results
+    const dbPrediction = await prisma.prediction.create({
+      data: {
+        matchId: game.id?.toString() || `game-${Date.now()}`,
+        matchDate: game.date ? new Date(game.date) : new Date(),
+        league: game.league || 'nba',
+        homeTeam: homeTeam.name || 'Unknown',
+        awayTeam: awayTeam.name || 'Unknown',
+        winnerPrediction: prediction.prediction.winner,
+        scorePrediction: `${prediction.score.predictedHomeScore}-${prediction.score.predictedAwayScore}`,
+        overUnderPrediction: prediction.overUnder.line,
+        confidence: prediction.prediction.confidence,
+        edge: (prediction.prediction.confidence - 0.5) * 100, // Convert to percentage
+        modelVersion: prediction.model.version,
+        featuresHash: `features-${prediction.model.featureCount}-${prediction.model.featureQuality.toFixed(2)}`,
+        status: 'pending',
+        userId: userId,
+        runId: runId,
+        traceId: `${traceId}-pred-${game.id}`,
+      },
+    });
+    
+    console.log(`[Pipeline] ML Prediction created: ${homeTeam.name} vs ${awayTeam.name} (${prediction.prediction.winner}, ${(prediction.prediction.confidence * 100).toFixed(1)}% confidence, model: ${prediction.model.version})`);
+    
+    return dbPrediction;
+  } catch (error) {
+    // Fallback to baseline if ML model fails
+    console.warn(`[Pipeline] ML prediction failed for ${homeTeam.name} vs ${awayTeam.name}, using baseline:`, error);
+    
+    return generateBaselinePrediction(game, userId, runId, traceId);
+  }
+}
+
+/**
+ * Baseline prediction algorithm (fallback when ML model unavailable)
+ */
+async function generateBaselinePrediction(
+  game: IngestionGameRecord,
+  userId: string,
+  runId: string,
+  traceId: string
+): Promise<CreatedPrediction | null> {
+  const homeTeam = game.homeTeam;
+  const awayTeam = game.awayTeam;
+  
+  if (!homeTeam || !awayTeam) {
+    console.warn(`[Pipeline] Missing team data for game ${game.id}`);
+    return null;
+  }
+  
+  // Baseline: home court advantage + minimal variance
+  const homeAdvantage = 0.08;
+  const confidence = Math.min(0.85, Math.max(0.55, 0.65 + homeAdvantage));
+  const winnerPrediction = 'HOME';
+  const edge = (confidence - 0.5) * 100;
+  
+  // Predicted scores
+  const homeScore = 110;
+  const awayScore = 105;
+  const scorePrediction = `${homeScore}-${awayScore}`;
+  const overUnderPrediction = homeScore + awayScore + 0.5;
+  
+  // Create prediction in database
+  const prediction = await prisma.prediction.create({
+    data: {
+      matchId: game.id?.toString() || `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      matchDate: game.date ? new Date(game.date) : new Date(),
+      league: game.league || 'nba',
+      homeTeam: homeTeam.name || 'Unknown',
+      awayTeam: awayTeam.name || 'Unknown',
+      winnerPrediction: winnerPrediction,
+      scorePrediction: scorePrediction,
+      overUnderPrediction: overUnderPrediction,
+      confidence: confidence,
+      edge: edge,
+      modelVersion: 'v0.0.0-baseline',
+      featuresHash: 'baseline-fallback',
+      status: 'pending',
+      userId: userId,
+      runId: runId,
+      traceId: `${traceId}-pred-${game.id}`,
+    },
+  });
+  
+  console.log(`[Pipeline] Baseline Prediction created: ${homeTeam.name} vs ${awayTeam.name} (BASELINE FALLBACK)`);
+  
+  return prediction;
 }
 
 /**

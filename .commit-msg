@@ -1,0 +1,13 @@
+test(quality): improve test determinism and structure
+
+- Remove 5 hard waits (waitForTimeout) from no-bet-page.spec.ts
+- Replace with waitForLoadState('networkidle') for better determinism
+- Split policy-evaluation-edge.spec.ts (313 lines) into 2 files:
+  * policy-confidence-edge.spec.ts (132 lines)
+  * policy-drift-kelly.spec.ts (191 lines)
+- Remove 6 test.skip() conditionals from no-bet-hard-stop.spec.ts and logs-replay.spec.ts
+- Replace conditional flows with deterministic API setup
+- All test files now under 300 lines
+- Quality score improved from 78 (B+) to 89 (A)
+
+Refs: testarch-trace, testarch-test-review

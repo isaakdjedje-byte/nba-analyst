@@ -10,6 +10,7 @@ vi.mock('../../server/db/client', () => ({
       update: vi.fn(),
       delete: vi.fn(),
       count: vi.fn(),
+      createManyAndReturn: vi.fn(),
     },
   },
 }));
@@ -27,8 +28,16 @@ import {
   countPolicyDecisionsByRunId,
   getDecisionStatsByRunId,
   getPolicyDecisionWithPrediction,
+  // Story 2.9: New exports
+  getDecisionHistory,
+  getPolicyDecisionByTraceId,
+  createManyPolicyDecisions,
+  publishPolicyDecision,
+  getDecisionsForRetention,
+  countDecisionsByStatus,
   type PolicyDecisionCreateInput,
   type DecisionStatus,
+  type DecisionHistoryQueryParams,
 } from '../../server/db/repositories/policy-decisions-repository';
 
 describe('Policy Decisions Repository - Type Validation', () => {
@@ -49,6 +58,12 @@ describe('Policy Decisions Repository - Type Validation', () => {
         edgeGate: true,
         driftGate: true,
         hardStopGate: false,
+        // Story 2.9: Decision History fields
+        matchDate: new Date('2026-02-14'),
+        homeTeam: 'Lakers',
+        awayTeam: 'Celtics',
+        confidence: 0.85,
+        modelVersion: 'model-v2',
         traceId: 'trace-xyz',
         executedAt: new Date('2026-02-13T10:00:00Z'),
       };
@@ -60,6 +75,10 @@ describe('Policy Decisions Repository - Type Validation', () => {
       expect(input.edgeGate).toBe(true);
       expect(input.driftGate).toBe(true);
       expect(input.hardStopGate).toBe(false);
+      // Story 2.9 fields
+      expect(input.homeTeam).toBe('Lakers');
+      expect(input.awayTeam).toBe('Celtics');
+      expect(input.confidence).toBe(0.85);
     });
 
     it('should handle HARD_STOP status with reason', () => {
@@ -76,6 +95,12 @@ describe('Policy Decisions Repository - Type Validation', () => {
         hardStopGate: true,
         hardStopReason: 'Feature drift > 0.15',
         recommendedAction: 'Retrain model before next run',
+        // Story 2.9: Decision History fields
+        matchDate: new Date('2026-02-14'),
+        homeTeam: 'Warriors',
+        awayTeam: 'Bulls',
+        confidence: 0.72,
+        modelVersion: 'model-v2',
         traceId: 'trace-123',
         executedAt: new Date(),
       };
@@ -100,6 +125,12 @@ describe('Policy Decisions Repository - Type Validation', () => {
           edgeGate: true,
           driftGate: true,
           hardStopGate: false,
+          // Story 2.9: Decision History fields
+          matchDate: new Date('2026-02-14'),
+          homeTeam: 'TeamA',
+          awayTeam: 'TeamB',
+          confidence: 0.80,
+          modelVersion: 'model-v2',
           traceId: 'trace-test',
           executedAt: new Date(),
         };
@@ -168,6 +199,12 @@ describe('Policy Decisions Repository - Type Validation', () => {
         edgeGate: true,
         driftGate: true,
         hardStopGate: false,
+        // Story 2.9: Decision History fields
+        matchDate: new Date('2026-02-14'),
+        homeTeam: 'Heat',
+        awayTeam: 'Nets',
+        confidence: 0.88,
+        modelVersion: 'model-v2',
         traceId: 'trace-test',
         executedAt: new Date(),
       };
@@ -176,6 +213,11 @@ describe('Policy Decisions Repository - Type Validation', () => {
       expect(input).toHaveProperty('edgeGate');
       expect(input).toHaveProperty('driftGate');
       expect(input).toHaveProperty('hardStopGate');
+      // Story 2.9 fields
+      expect(input).toHaveProperty('matchDate');
+      expect(input).toHaveProperty('homeTeam');
+      expect(input).toHaveProperty('awayTeam');
+      expect(input).toHaveProperty('confidence');
     });
 
     it('should handle gate failures correctly', () => {
@@ -190,6 +232,12 @@ describe('Policy Decisions Repository - Type Validation', () => {
         edgeGate: false,  // Failed
         driftGate: true,
         hardStopGate: false,
+        // Story 2.9: Decision History fields
+        matchDate: new Date('2026-02-14'),
+        homeTeam: 'Knicks',
+        awayTeam: 'Raptors',
+        confidence: 0.65,
+        modelVersion: 'model-v2',
         traceId: 'trace-fail',
         executedAt: new Date(),
       };
@@ -214,11 +262,21 @@ describe('Policy Decisions Repository - Type Validation', () => {
         edgeGate: true,
         driftGate: true,
         hardStopGate: false,
+        // Story 2.9: Decision History fields
+        matchDate: new Date('2026-02-14'),
+        homeTeam: 'Lakers',
+        awayTeam: 'Celtics',
+        confidence: 0.85,
+        edge: 0.12,
+        modelVersion: 'model-v2',
+        recommendedPick: 'Lakers',
+        predictionInputs: {},
+        publishedAt: new Date(),
         traceId: 'trace-123',
         executedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      } as unknown as never);
 
       const input: PolicyDecisionCreateInput = {
         predictionId: 'pred-123',
@@ -231,6 +289,12 @@ describe('Policy Decisions Repository - Type Validation', () => {
         edgeGate: true,
         driftGate: true,
         hardStopGate: false,
+        // Story 2.9: Decision History fields
+        matchDate: new Date('2026-02-14'),
+        homeTeam: 'Lakers',
+        awayTeam: 'Celtics',
+        confidence: 0.85,
+        modelVersion: 'model-v2',
         traceId: 'trace-123',
         executedAt: new Date(),
       };
@@ -241,6 +305,9 @@ describe('Policy Decisions Repository - Type Validation', () => {
       expect(result).toBeDefined();
       expect(result.predictionId).toBe('pred-123');
       expect(result.status).toBe('PICK');
+      // Story 2.9 validation
+      expect(result.homeTeam).toBe('Lakers');
+      expect(result.confidence).toBe(0.85);
     });
 
     it('should call prisma.policyDecision.findUnique for getById', async () => {
@@ -250,7 +317,7 @@ describe('Policy Decisions Repository - Type Validation', () => {
         predictionId: 'pred-123',
         status: 'PICK',
         rationale: 'Test',
-      } as any);
+      } as unknown as never);
 
       const result = await getPolicyDecisionById('dec-123');
 
@@ -285,7 +352,7 @@ describe('Policy Decisions Repository - Type Validation', () => {
         predictionId: 'pred-789',
         status: 'HARD_STOP',
         rationale: 'Drift detected',
-      } as any);
+      } as unknown as never);
 
       const result = await getPolicyDecisionByPredictionId('pred-789');
 
@@ -294,6 +361,48 @@ describe('Policy Decisions Repository - Type Validation', () => {
         select: expect.any(Object),
       });
       expect(result?.status).toBe('HARD_STOP');
+    });
+  });
+
+  // Story 2.9: Decision History Tests
+  describe('Decision History Functions', () => {
+    it('should export getDecisionHistory function', () => {
+      expect(typeof getDecisionHistory).toBe('function');
+    });
+
+    it('should export getPolicyDecisionByTraceId function', () => {
+      expect(typeof getPolicyDecisionByTraceId).toBe('function');
+    });
+
+    it('should export createManyPolicyDecisions function', () => {
+      expect(typeof createManyPolicyDecisions).toBe('function');
+    });
+
+    it('should export publishPolicyDecision function', () => {
+      expect(typeof publishPolicyDecision).toBe('function');
+    });
+
+    it('should export getDecisionsForRetention function', () => {
+      expect(typeof getDecisionsForRetention).toBe('function');
+    });
+
+    it('should export countDecisionsByStatus function', () => {
+      expect(typeof countDecisionsByStatus).toBe('function');
+    });
+
+    it('should validate DecisionHistoryQueryParams type', () => {
+      const params: DecisionHistoryQueryParams = {
+        fromDate: new Date('2026-01-01'),
+        toDate: new Date('2026-02-14'),
+        status: 'PICK',
+        matchId: 'match-123',
+        page: 1,
+        limit: 20,
+      };
+
+      expect(params.status).toBe('PICK');
+      expect(params.page).toBe(1);
+      expect(params.limit).toBe(20);
     });
   });
 });

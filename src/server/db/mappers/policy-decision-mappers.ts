@@ -3,11 +3,13 @@
  * 
  * Maps between database (snake_case) and API (camelCase) representations.
  * Story 2.4: Database schema for predictions and decisions.
+ * Story 4.5: Enhanced with dataSourceFingerprints for audit metadata.
  * 
  * @see https://github.com/isaacnino/nba-analyst/tree/main/docs/architecture.md#data-mappers
  */
 
 import type { PolicyDecisionWithRelations, DecisionStatus } from '../repositories/policy-decisions-repository';
+import type { DataSourceFingerprints } from '@/server/audit/types';
 
 // Database row shape (snake_case from Prisma)
 export interface PolicyDecisionDbRow {
@@ -28,6 +30,8 @@ export interface PolicyDecisionDbRow {
   run_id: string;
   created_at: Date;
   updated_at: Date;
+  // Story 4.5: Data source fingerprints for audit
+  data_source_fingerprints: DataSourceFingerprints | null;
 }
 
 // API DTO shape (camelCase for frontend)
@@ -49,6 +53,8 @@ export interface PolicyDecisionDto {
   runId: string;
   createdAt: string; // ISO format
   updatedAt: string; // ISO format
+  // Story 4.5: Data source fingerprints for audit
+  dataSourceFingerprints: DataSourceFingerprints | null;
 }
 
 /**
@@ -57,6 +63,14 @@ export interface PolicyDecisionDto {
 export function toPolicyDecisionDto(
   dbRow: PolicyDecisionDbRow | PolicyDecisionWithRelations
 ): PolicyDecisionDto {
+  // Handle data source fingerprints - can come from snake_case or camelCase
+  let fingerprints: DataSourceFingerprints | null = null;
+  if ('data_source_fingerprints' in dbRow && dbRow.data_source_fingerprints && Array.isArray(dbRow.data_source_fingerprints)) {
+    fingerprints = dbRow.data_source_fingerprints;
+  } else if ('dataSourceFingerprints' in dbRow && dbRow.dataSourceFingerprints && Array.isArray(dbRow.dataSourceFingerprints)) {
+    fingerprints = dbRow.dataSourceFingerprints;
+  }
+
   return {
     id: dbRow.id,
     predictionId: 'prediction_id' in dbRow 
@@ -91,6 +105,7 @@ export function toPolicyDecisionDto(
     updatedAt: ('updated_at' in dbRow 
       ? dbRow.updated_at 
       : dbRow.updatedAt).toISOString(),
+    dataSourceFingerprints: fingerprints,
   };
 }
 
@@ -116,6 +131,8 @@ export function toPolicyDecisionDb(
   if (dto.traceId !== undefined) dbRow.trace_id = dto.traceId;
   if (dto.executedAt !== undefined) dbRow.executed_at = new Date(dto.executedAt);
   if (dto.runId !== undefined) dbRow.run_id = dto.runId;
+  // Story 4.5: Data source fingerprints
+  if (dto.dataSourceFingerprints !== undefined) dbRow.data_source_fingerprints = dto.dataSourceFingerprints;
 
   return dbRow;
 }

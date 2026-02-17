@@ -10,31 +10,33 @@ import { createNoBetDecision, createHardStopDecision, createMatch } from '../sup
 
 test.describe('No-Bet Flow', () => {
   test.beforeEach(async ({ page }) => {
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/no-bet');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
   });
 
-  test('should display no-bet recommendations', async ({ page }) => {
+  test('[P1] [1.2-NB-010] should display no-bet recommendations', async ({ page }) => {
     // Given the user is on the no-bet page
     // Then the no-bet list should be visible
     await expect(page.getByTestId('no-bet-list')).toBeVisible();
   });
 
-  test('should show rationale for no-bet', async ({ page, request }) => {
+  test('[P1] [1.2-NB-011] should show rationale for no-bet', async ({ page, request }) => {
     // Given a no-bet decision exists
     const match = createMatch();
     const decision = createNoBetDecision({ matchId: match.id });
 
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
     const created = await createResponse.json();
 
     // When the user visits the no-bet page
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/no-bet');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // Then the no-bet rationale should be visible
     const rationale = page.getByTestId(`no-bet-rationale-${created.id}`);
@@ -42,24 +44,25 @@ test.describe('No-Bet Flow', () => {
     await expect(rationale.or(genericRationale).first()).toBeVisible();
 
     // Cleanup
-    await request.delete(`${baseUrl}/api/decisions/${created.id}`).catch(() => {});
+    await request.delete(`${baseUrl}/api/v1/decisions/${created.id}`).catch(() => {});
   });
 
-  test('should display policy gates that failed', async ({ page, request }) => {
+  test('[P1] [1.2-NB-012] should display policy gates that failed', async ({ page, request }) => {
     // Given a no-bet decision exists via API setup
     const match = createMatch();
     const decision = createNoBetDecision({ matchId: match.id });
     
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
     const created = await createResponse.json();
     
     // When the user views a no-bet card
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/no-bet');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
     const noBetCard = page.getByTestId('no-bet-card').first();
     await expect(noBetCard).toBeVisible();
@@ -69,24 +72,25 @@ test.describe('No-Bet Flow', () => {
     await expect(page.getByTestId('failed-gates')).toBeVisible();
     
     // Cleanup
-    await request.delete(`${baseUrl}/api/decisions/${created.id}`).catch(() => {});
+    await request.delete(`${baseUrl}/api/v1/decisions/${created.id}`).catch(() => {});
   });
 
-  test('should allow drilling down for more info', async ({ page, request }) => {
+  test('[P2] [1.2-NB-013] should allow drilling down for more info', async ({ page, request }) => {
     // Given a no-bet decision exists via API setup
     const match = createMatch();
     const decision = createNoBetDecision({ matchId: match.id });
     
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
     const created = await createResponse.json();
     
     // When the user views a no-bet card and clicks "Learn more"
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/no-bet');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
     
     const noBetCard = page.getByTestId('no-bet-card').first();
     await expect(noBetCard).toBeVisible();
@@ -94,29 +98,30 @@ test.describe('No-Bet Flow', () => {
     await page.getByTestId('learn-more-btn').first().click();
 
     // Then the detailed explanation should be shown
-    await expect(page.getByTestId('detailed-explanation')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('detailed-explanation')).toBeVisible();
     
     // Cleanup
-    await request.delete(`${baseUrl}/api/decisions/${created.id}`).catch(() => {});
+    await request.delete(`${baseUrl}/api/v1/decisions/${created.id}`).catch(() => {});
   });
 });
 
 test.describe('Hard-Stop Flow', () => {
-  test('should enforce hard-stop on policy violation', async ({ page, request }) => {
+  test('[P0] [1.2-HS-001] should enforce hard-stop on policy violation', async ({ page, request }) => {
     // Given a decision with hard-stop policy violation
     const match = createMatch();
     const decision = createHardStopDecision({ matchId: match.id });
 
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
     const created = await createResponse.json();
 
     // When the user tries to view the pick
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/picks');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // Then the hard-stop banner or no-bet list should be displayed
     const hardStopBanner = page.getByTestId('hard-stop-banner');
@@ -124,22 +129,22 @@ test.describe('Hard-Stop Flow', () => {
     await expect(hardStopBanner.or(noBetList).first()).toBeVisible();
 
     // Cleanup
-    await request.delete(`${baseUrl}/api/decisions/${created.id}`).catch(() => {});
+    await request.delete(`${baseUrl}/api/v1/decisions/${created.id}`).catch(() => {});
   });
 
-  test('should block pick publication on hard-stop', async ({ request }) => {
+  test('[P0] [1.2-HS-002] should block pick publication on hard-stop', async ({ request }) => {
     // Given a decision with hard-stop
     const decision = createHardStopDecision();
 
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const createResponse = await request.post(`${baseUrl}/api/decisions`, {
+    const createResponse = await request.post(`${baseUrl}/api/v1/decisions`, {
       data: decision,
       headers: { 'Content-Type': 'application/json' },
     });
     const created = await createResponse.json();
 
     // When attempting to publish via API
-    const response = await request.post(`${baseUrl}/api/decisions/publish`, {
+    const response = await request.post(`${baseUrl}/api/v1/decisions/publish`, {
       data: { decisionId: created.id },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -148,14 +153,15 @@ test.describe('Hard-Stop Flow', () => {
     expect(response.status()).toBe(403);
 
     // Cleanup
-    await request.delete(`${baseUrl}/api/decisions/${created.id}`).catch(() => {});
+    await request.delete(`${baseUrl}/api/v1/decisions/${created.id}`).catch(() => {});
   });
 
-  test('should show audit trail for hard-stop', async ({ page }) => {
+  test('[P1] [1.2-HS-003] should show audit trail for hard-stop', async ({ page }) => {
     // Given a hard-stop decision exists
     // When the user views the decision logs
+    const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/') || resp.status() === 200);
     await page.goto('/dashboard/logs');
-    await page.waitForLoadState('networkidle');
+    await responsePromise;
 
     // Then the hard-stop event or log entries should be visible
     const auditLog = page.getByTestId('audit-log-entry');
@@ -165,7 +171,7 @@ test.describe('Hard-Stop Flow', () => {
 });
 
 test.describe('Policy Engine Integration', () => {
-  test('should evaluate policy via API', async ({ request }) => {
+  test('[P1] [1.2-POL-001] should evaluate policy via API', async ({ request }) => {
     // When evaluating a decision against policy
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     const response = await request.post(`${baseUrl}/api/policy/evaluate`, {

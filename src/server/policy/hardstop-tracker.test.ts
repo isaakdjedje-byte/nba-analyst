@@ -7,8 +7,8 @@
  * CRITICAL: Tests verify 100% hard-stop enforcement (NFR13).
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { HardStopTracker, HardStopStateData } from '@/server/policy/hardstop-tracker';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HardStopTracker } from '@/server/policy/hardstop-tracker';
 import { HardStopsConfig } from '@/server/policy/types';
 
 // Mock Prisma client
@@ -51,7 +51,7 @@ describe('HardStopTracker', () => {
     mockPrisma.hardStopState.update.mockResolvedValue({});
     mockPrisma.auditLog.create.mockResolvedValue({});
     
-    tracker = new HardStopTracker(config, mockPrisma as any);
+    tracker = new HardStopTracker(config, mockPrisma as unknown as ConstructorParameters<typeof HardStopTracker>[1]);
   });
 
   describe('Initialization', () => {

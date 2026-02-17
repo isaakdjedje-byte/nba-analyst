@@ -1,0 +1,34 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true
+  },
+  "include": [
+    "src/middleware.ts",
+    "src/server/auth/auth-options.ts",
+    "src/server/auth/rate-limit.ts",
+    "src/server/cache/rate-limiter.ts",
+    "src/app/api/auth/login/route.ts",
+    "src/app/api/auth/me/route.ts",
+    "src/app/api/v1/b2b/_base.ts",
+    "src/app/api/v1/b2b/decisions/route.ts",
+    "src/app/api/v1/b2b/decisions/[id]/route.ts",
+    "src/app/api/v1/b2b/decisions/[id]/explain/route.ts",
+    "src/app/api/v1/b2b/profiles/route.ts",
+    "src/app/api/v1/b2b/profiles/[id]/route.ts",
+    "src/app/api/v1/b2b/profiles/[id]/history/route.ts",
+    "src/app/api/v1/b2b/runs/route.ts",
+    "src/app/api/v1/b2b/openapi/route.ts",
+    "src/app/api/v1/b2b/docs/route.ts",
+    "src/app/api/v1/decisions/route.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "dist",
+    "tests",
+    "e2e"
+  ]
+}

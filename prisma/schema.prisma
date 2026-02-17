@@ -1,0 +1,883 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Architecture: PostgreSQL with snake_case naming convention
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+// Role Enum values: user, support, ops, admin
+enum Role {
+  user
+  support
+  ops
+  admin
+}
+
+// Data export status
+enum DataExportStatus {
+  pending
+  processing
+  completed
+  expired
+}
+
+// Daily run status
+enum DailyRunStatus {
+  pending
+  running
+  completed
+  failed
+  degraded
+}
+
+// Prediction status
+enum PredictionStatus {
+  pending
+  processed
+  confirmed
+  cancelled
+}
+
+// Policy decision status (Story 2.4: Updated for decision engine)
+enum DecisionStatus {
+  PICK
+  NO_BET
+  HARD_STOP
+  
+  @@map("decision_status")
+}
+
+// Run status for daily runs (Story 2.4)
+enum RunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  
+  @@map("run_status")
+}
+
+// =====================================================
+// EXISTING MODELS (from Epic 1 - User Auth & RGPD)
+// =====================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  password      String?   // Hashed password for credentials provider
+  // NFR9: Data minimization - only email collected as PII
+  // name and image fields removed per RGPD compliance
+  role          Role      @default(user)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // MFA Fields
+  mfaSecret         String?   @map("mfa_secret")  // Encrypted TOTP secret
+  mfaEnabled        Boolean   @default(false) @map("mfa_enabled")
+  mfaBackupCodes    String    @default("[]") @map("mfa_backup_codes") // JSON array of hashed backup codes
+  mfaEnrolledAt     DateTime? @map("mfa_enrolled_at")
+  mfaLastVerifiedAt DateTime? @map("mfa_last_verified_at")
+
+  // MFA Removal Cooldown
+  mfaDisableRequestedAt DateTime? @map("mfa_disable_requested_at")
+
+  // RGPD Fields
+  dataExportRequestedAt DateTime? @map("data_export_requested_at")
+  dataExportCompletedAt DateTime? @map("data_export_completed_at")
+  deletionRequestedAt   DateTime? @map("deletion_requested_at")
+  deletedAt             DateTime? @map("deleted_at")  // Soft delete
+  deletionReason        String?   @map("deletion_reason")
+  
+  // Consent tracking
+  privacyPolicyAcceptedAt DateTime? @map("privacy_policy_accepted_at")
+  privacyPolicyVersion    String?   @map("privacy_policy_version")
+
+  // Relations
+  accounts    Account[]
+  sessions    Session[]
+  auditLogs   AuditLog[]
+  dataExports DataExport[]
+  predictions Prediction[]
+
+  // C5: Index for RGPD soft delete queries
+  @@index([deletedAt])
+  @@index([deletionRequestedAt])
+
+  @@map("users")
+}
+
+model DataExport {
+  id            String          @id @default(cuid())
+  userId        String          @map("user_id")
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestedAt   DateTime        @default(now()) @map("requested_at")
+  completedAt   DateTime?      @map("completed_at")
+  expiresAt     DateTime        @map("expires_at")
+  filePath      String?         @map("file_path")
+  status        DataExportStatus @default(pending)
+  dataHash      String?         @map("data_hash")   // Integrity check
+  
+  @@index([userId])
+  @@index([status])
+  @@map("data_exports")
+}
+
+model DataRetentionPolicy {
+  id            String   @id @default(cuid())
+  dataType      String   @map("data_type")     // user_data, audit_log, decisions
+  retentionDays Int      @map("retention_days")
+  description   String?
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  @@map("data_retention_policies")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// MFA Setup Session for temporary secret storage
+model MFASetupSession {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  secret    String   // Encrypted TOTP secret
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("mfa_setup_sessions")
+}
+
+// Audit log for role changes and sensitive operations (NFR10)
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String   @map("actor_id")
+  action     String   // e.g., "ROLE_CHANGE", "USER_LOGIN", etc.
+  targetId   String?  @map("target_id") // Optional: target user ID
+  targetType String?  @map("target_type") // e.g., "USER", "POLICY"
+  oldValue   String?  @map("old_value")
+  newValue   String?  @map("new_value")
+  metadata   String?  @map("metadata") // JSON string for additional context
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  timestamp  DateTime @default(now())
+  traceId    String  @map("trace_id")
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// =====================================================
+// EPIC 2: PRODUCTION DECISIONNELLE - BOUNDED DOMAINS
+// =====================================================
+
+// Daily run - metadata and scheduling for daily decision production (Story 2.4 Enhanced)
+model DailyRun {
+  id              String     @id @default(uuid())
+  runDate         DateTime   @map("run_date") @db.Date
+  status          RunStatus  // Story 2.4: Changed from DailyRunStatus to RunStatus enum
+  
+  // Execution tracking (Story 2.4)
+  startedAt       DateTime?  @map("started_at")
+  completedAt     DateTime?  @map("completed_at")
+  
+  // Statistics (Story 2.4: Updated field names)
+  totalMatches    Int        @default(0) @map("total_matches")
+  predictionsCount Int      @default(0) @map("predictions_count")
+  picksCount      Int        @default(0) @map("picks_count")
+  noBetCount      Int        @default(0) @map("no_bet_count")
+  hardStopCount   Int        @default(0) @map("hard_stop_count")
+  
+  // Data quality tracking (Story 2.4)
+  dataQualityScore Float?    @map("data_quality_score")
+  errors          String?    // JSON array of error messages
+  
+  // Execution context
+  triggeredBy     String     @map("triggered_by") // manual, scheduled, api
+  traceId         String     @map("trace_id")
+  
+  // Relations
+  predictions     Prediction[]
+  policyDecisions PolicyDecision[]
+  
+  // Metadata
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@unique([runDate])
+  @@index([runDate])
+  @@index([status])
+  @@index([createdAt])
+  @@map("daily_runs")
+}
+
+// Prediction - ML model outputs (Story 2.4 Enhanced)
+model Prediction {
+  id              String   @id @default(uuid())
+  
+  // Match identification
+  matchId         String   @map("match_id")
+  matchDate       DateTime @map("match_date") @db.Date
+  league          String   // nba, nfl, etc.
+  homeTeam        String   @map("home_team")
+  awayTeam        String   @map("away_team")
+  
+  // ML Predictions (Story 2.4: Enhanced ML output fields)
+  winnerPrediction String? @map("winner_prediction") // "HOME", "AWAY"
+  scorePrediction  String? @map("score_prediction")  // e.g., "105-98"
+  overUnderPrediction Float? @map("over_under_prediction") // e.g., 203.5
+  
+  // Confidence and metadata (Story 2.4)
+  confidence      Float
+  modelVersion    String   @map("model_version")
+  featuresHash    String?  @map("features_hash")
+  edge            Float?   // calculated edge percentage
+  
+  // Status
+  status          PredictionStatus @default(pending)
+  
+  // Relations
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runId           String   @map("run_id")
+  run             DailyRun @relation(fields: [runId], references: [id])
+  
+  // Policy decision relation (Story 2.4)
+  policyDecision  PolicyDecision?
+  
+  // Metadata
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  traceId         String   @map("trace_id")
+
+  @@index([runId])
+  @@index([matchId])
+  @@index([createdAt])
+  @@map("predictions")
+}
+
+// Policy decision - Policy engine results (Story 2.4 Enhanced, Story 2.9: Decision History)
+model PolicyDecision {
+  id              String         @id @default(uuid())
+  
+  // Decision context (Story 2.4)
+  predictionId    String         @unique @map("prediction_id")
+  matchId         String         @map("match_id")
+  userId          String         @map("user_id")
+  
+  // Decision outcome (Story 2.4)
+  status          DecisionStatus
+  rationale       String
+  
+  // Gate outcomes (Story 2.4: from architecture.md quality gates)
+  confidenceGate  Boolean        @map("confidence_gate")
+  edgeGate        Boolean        @map("edge_gate")
+  driftGate       Boolean        @map("drift_gate")
+  hardStopGate    Boolean        @map("hard_stop_gate")
+  
+  // Hard-stop details (when applicable)
+  hardStopReason  String?        @map("hard_stop_reason")
+  recommendedAction String?      @map("recommended_action")
+
+  // =====================================================
+  // Story 2.9: Decision History Fields
+  // =====================================================
+  
+  // Match information (FR19)
+  matchDate        DateTime       @map("match_date") @db.Date
+  homeTeam         String         @map("home_team")
+  awayTeam         String         @map("away_team")
+  
+  // Decision output details (FR19)
+  recommendedPick  String?        @map("recommended_pick")  // For PICK status
+  
+  // ML model info
+  confidence       Float          // Confidence score from prediction
+  edge             Float?         @map("edge")              // Calculated edge percentage
+  modelVersion     String         @map("model_version")
+  predictionInputs Json?          @map("prediction_inputs") // Raw inputs for audit
+  
+  // Publication tracking (FR19)
+  publishedAt      DateTime?      @map("published_at")
+  
+  // Audit fields (Story 2.4)
+  traceId         String         @map("trace_id")
+  executedAt      DateTime       @map("executed_at")
+  
+  // Story 4.5: Data source fingerprints for audit metadata
+  dataSourceFingerprints Json?    @map("data_source_fingerprints") // Array of DataSourceFingerprint
+  
+  // Relations (Story 2.4)
+  prediction      Prediction     @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  runId           String         @map("run_id")
+  run             DailyRun       @relation(fields: [runId], references: [id])
+  
+  // Metadata
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([runId])
+  @@index([status])
+  @@index([traceId])
+  @@index([executedAt])
+  @@index([matchId])
+  @@index([matchDate])
+  @@index([publishedAt])
+  @@map("policy_decisions")
+}
+
+// =====================================================
+// EPIC 2.6: HARD-STOP STATE PERSISTENCE
+// =====================================================
+
+// Hard-stop state tracker (Story 2.6)
+model HardStopState {
+  id                  String    @id @default(uuid())
+  
+  // Current state
+  isActive            Boolean   @default(false) @map("is_active")
+  dailyLoss           Float     @default(0) @map("daily_loss")
+  consecutiveLosses   Int       @default(0) @map("consecutive_losses")
+  bankrollPercent     Float     @default(0) @map("bankroll_percent")
+  
+  // Timestamps
+  lastResetAt         DateTime  @default(now()) @map("last_reset_at")
+  triggeredAt         DateTime? @map("triggered_at")
+  
+  // Trigger reason
+  triggerReason       String?   @map("trigger_reason")
+  
+  // Metadata
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("hard_stop_states")
+}
+
+// =====================================================
+// EPIC 6: B2B API - API KEYS TABLE
+// =====================================================
+
+// B2B API Key for external client authentication
+model B2BApiKey {
+  id          String   @id @default(cuid())
+  name        String   // Client name for identification
+  keyHash     String   @unique @map("key_hash") // SHA-256 hash of API key
+  keyPrefix   String   @map("key_prefix") // First 8 chars for identification
+  
+  // Permissions
+  scopes      String   @default("[]") // JSON array: ["decisions:read", "runs:read", "profiles:write"]
+  rateLimit   Int      @default(100) @map("rate_limit") // Requests per minute
+  
+  // Status
+  isActive    Boolean  @default(true) @map("is_active")
+  expiresAt   DateTime? @map("expires_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+  
+  // Metadata
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  createdBy   String   @map("created_by") // User ID who created the key
+  
+  // Indexes
+  @@index([isActive])
+  @@index([createdAt])
+  
+  @@map("b2b_api_keys")
+}
+
+// B2B Policy Profile for tenant-specific configuration (Story 6.3)
+model B2BPolicyProfile {
+  id            String   @id @default(cuid())
+  name          String   // Profile name (e.g., "Conservative", "Aggressive")
+  description   String?  @db.Text // Profile description
+  
+  // Configurable thresholds (within safe bounds)
+  confidenceMin Float    @default(0.65) @map("confidence_min") // Min threshold (0-1)
+  edgeMin       Float    @default(0.05) @map("edge_min") // Min edge (0-1)
+  
+  // Drift settings
+  maxDriftScore Float    @default(0.15) @map("max_drift_score") // Max drift (0-1)
+  
+  // Status
+  isActive      Boolean  @default(true) @map("is_active")
+  isDefault     Boolean  @default(false) @map("is_default") // Default profile for tenant
+  
+  // Tenant association
+  apiKeyId      String   @map("api_key_id") // Associated B2B client
+  
+  // Metadata
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdBy     String?  @map("created_by") // User ID who created
+  
+  // Indexes
+  @@index([apiKeyId])
+  @@index([isActive])
+  @@index([createdAt])
+  
+  @@map("b2b_policy_profiles")
+}
+
+// B2B Policy Profile History for audit trail (Story 6.3)
+model B2BPolicyProfileHistory {
+  id            String   @id @default(cuid())
+  profileId     String   @map("profile_id") // Reference to profile
+  
+  // Change details
+  action        String   // "created", "updated", "deleted"
+  changedBy     String?  @map("changed_by") // User who made change
+  reason        String?  @db.Text // Reason for change
+  
+  // Old values (JSON)
+  oldValue      Json?    @map("old_value")
+  // New values (JSON)
+  newValue      Json?    @map("new_value")
+  
+  // Trace ID for audit linkage
+  traceId       String   @map("trace_id")
+  
+  // Timestamp
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  // Indexes
+  @@index([profileId])
+  @@index([createdAt(sort: Desc)])
+  @@index([traceId])
+  
+  @@map("b2b_policy_profile_history")
+}
+
+// Policy version snapshot for history and rollback (Story 5.3)
+model PolicyVersionSnapshot {
+  id                String   @id @default(cuid())
+  version           Int      @unique
+  createdAt         DateTime @default(now()) @map("created_at")
+  createdBy         String   @map("created_by")
+  configJson        Json     @map("config_json") // Full policy config snapshot
+  changeReason      String?  @map("change_reason")
+  isRestore         Boolean  @default(false) @map("is_restore")
+  previousVersionId String?  @map("previous_version_id") // If restored, link to source version
+  
+  // Indexes for common queries
+  @@index([createdAt(sort: Desc)])
+  @@index([createdBy])
+  
+  @@map("policy_version_snapshots")
+}
+
+// =====================================================
+// EPIC 7: ML MODEL MANAGEMENT & MONITORING
+// =====================================================
+
+// Prediction logs for monitoring and drift detection
+model PredictionLog {
+  id                    String    @id @default(cuid())
+  predictionId          String    @map("prediction_id")
+  modelVersion          String    @map("model_version")
+  algorithm             String
+  
+  // Features (JSON)
+  features              Json
+  
+  // Predictions
+  predictedProbability  Float     @map("predicted_probability")
+  predictedWinner       String    @map("predicted_winner") // 'HOME' or 'AWAY'
+  confidence            Float
+  
+  // Actual outcomes (filled later)
+  actualWinner          String?   @map("actual_winner")
+  homeScore             Int?      @map("home_score")
+  awayScore             Int?      @map("away_score")
+  correct               Boolean?
+  resolvedAt            DateTime? @map("resolved_at")
+  
+  // Performance
+  latencyMs             Float     @map("latency_ms")
+  error                 String?
+  
+  // Metadata
+  createdAt             DateTime  @default(now()) @map("created_at")
+  
+  @@index([modelVersion])
+  @@index([createdAt])
+  @@index([predictionId])
+  @@index([correct])
+  @@map("prediction_logs")
+}
+
+// Historical games for training
+model Game {
+  id                    String   @id @default(cuid())
+  externalId            Int      @unique @map("external_id")
+  season                Int
+  seasonType            String   @map("season_type")
+  gameDate              DateTime @map("game_date")
+  status                String
+
+  // Teams
+  homeTeamId            Int      @map("home_team_id")
+  homeTeamName          String   @map("home_team_name")
+  homeTeamAbbreviation  String   @map("home_team_abbreviation")
+  homeTeamConference    String   @map("home_team_conference")
+
+  awayTeamId            Int      @map("away_team_id")
+  awayTeamName          String   @map("away_team_name")
+  awayTeamAbbreviation  String   @map("away_team_abbreviation")
+  awayTeamConference    String   @map("away_team_conference")
+
+  // Scores
+  homeScore             Int?     @map("home_score")
+  awayScore             Int?     @map("away_score")
+
+  // Metadata
+  arena                 String?
+  attendance            Int?
+  duration              Int?     // Minutes
+  referees              Json?    // [{name, id}, ...]
+
+  // Status enhancement
+  isPlayoffGame         Boolean @default(false) @map("is_playoff_game")
+  playoffRound          String? @map("playoff_round")
+
+  // Relations
+  playerStats           PlayerGameStats[]
+  boxScore              BoxScore?
+
+  // Timestamps
+  fetchedAt             DateTime @default(now()) @map("fetched_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@index([gameDate])
+  @@index([season, seasonType])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([status])
+  @@map("games")
+}
+
+// Box scores for detailed stats
+model BoxScore {
+  id                    String   @id @default(cuid())
+  gameId                String   @unique @map("game_id")
+
+  // Home team stats
+  homePoints            Int      @map("home_points")
+  homeRebounds          Int      @map("home_rebounds")
+  homeAssists           Int      @map("home_assists")
+  homeSteals            Int      @map("home_steals")
+  homeBlocks            Int      @map("home_blocks")
+  homeTurnovers         Int      @map("home_turnovers")
+  homeFgPct             Float    @map("home_fg_pct")
+  home3pPct             Float    @map("home_3p_pct")
+  homeFtPct             Float    @map("home_ft_pct")
+
+  // Away team stats
+  awayPoints            Int      @map("away_points")
+  awayRebounds          Int      @map("away_rebounds")
+  awayAssists           Int      @map("away_assists")
+  awaySteals            Int      @map("away_steals")
+  awayBlocks            Int      @map("away_blocks")
+  awayTurnovers         Int      @map("away_turnovers")
+  awayFgPct             Float    @map("away_fg_pct")
+  away3pPct             Float    @map("away_3p_pct")
+  awayFtPct             Float    @map("away_ft_pct")
+
+  // Relations
+  game                  Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  // Metadata
+  fetchedAt             DateTime @default(now()) @map("fetched_at")
+
+  @@index([gameId])
+  @@map("box_scores")
+}
+
+// ML Model storage and versioning
+model MLModel {
+  id                String   @id @default(cuid())
+  version           String   @unique
+  algorithm         String   // 'logistic-regression', 'xgboost', etc.
+  createdAt         DateTime @default(now()) @map("created_at")
+  
+  // Training data info
+  trainingDataStart DateTime @map("training_data_start")
+  trainingDataEnd   DateTime @map("training_data_end")
+  numTrainingSamples Int    @map("num_training_samples")
+  numTestSamples    Int      @map("num_test_samples")
+  
+  // Model metrics
+  accuracy          Float
+  precision         Float
+  recall            Float
+  f1Score           Float    @map("f1_score")
+  logLoss           Float    @map("log_loss")
+  auc               Float
+  calibrationError  Float    @map("calibration_error")
+  
+  // Model weights (JSON blob)
+  weightsHash       String   @map("weights_hash") // Integrity check
+  weights           Json     // Serialized model weights
+  
+  // Status
+  isActive          Boolean  @default(false) @map("is_active")
+  activatedAt       DateTime? @map("activated_at")
+  
+  // Metadata
+  description       String?
+  
+  @@index([isActive])
+  @@index([createdAt(sort: Desc)])
+  @@index([algorithm])
+  
+  @@map("ml_models")
+}
+
+// Feature store for caching computed features
+model FeatureStore {
+  id                String   @id @default(cuid())
+  matchId           String   @map("match_id")
+  homeTeamId        Int      @map("home_team_id")
+  awayTeamId        Int      @map("away_team_id")
+  matchDate         DateTime @map("match_date")
+
+  // Features (JSON blob)
+  features          Json     // Serialized FeatureRecord
+  featuresHash      String   @map("features_hash") // For cache invalidation
+  freshnessScore    Float    @map("freshness_score")
+
+  // Metadata
+  computedAt        DateTime @default(now()) @map("computed_at")
+  dataVersion       String   @map("data_version")
+
+  @@unique([matchId])
+  @@index([matchDate])
+  @@index([homeTeamId, awayTeamId])
+  @@index([computedAt])
+
+  @@map("feature_store")
+}
+
+// =====================================================
+// PLAYER DATA TABLES - Phase 2 Implementation
+// =====================================================
+
+model Player {
+  id            Int       @id @default(autoincrement())
+  nbaId         String    @unique @map("nba_id")
+  firstName     String    @map("first_name")
+  lastName      String    @map("last_name")
+  fullName      String    @map("full_name")
+  jerseyNumber  String?   @map("jersey_number")
+  position      String?   // PG, SG, SF, PF, C
+  height        String?   // 6-8
+  weight        Int?      // lbs
+  birthDate     DateTime? @map("birth_date")
+  college       String?
+  country       String?
+  draftYear     Int?      @map("draft_year")
+  draftRound    Int?      @map("draft_round")
+  draftNumber   Int?      @map("draft_number")
+
+  // Relations
+  teams         PlayerTeam[]
+  gameStats     PlayerGameStats[]
+  seasonStats   PlayerSeasonStats[]
+  injuries      InjuryReport[]
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([fullName])
+  @@map("players")
+}
+
+model PlayerTeam {
+  id        Int       @id @default(autoincrement())
+  playerId  Int       @map("player_id")
+  teamId    Int       @map("team_id")
+  season    Int
+  startDate DateTime? @map("start_date")
+  endDate   DateTime? @map("end_date")
+
+  player    Player    @relation(fields: [playerId], references: [id])
+
+  @@unique([playerId, teamId, season])
+  @@index([teamId, season])
+  @@map("player_teams")
+}
+
+model PlayerGameStats {
+  id              Int       @id @default(autoincrement())
+  playerId        Int       @map("player_id")
+  gameId          String    @map("game_id")
+  teamId          Int       @map("team_id")
+  season          Int
+
+  // Minutes played
+  minutes         Int?      // Total seconds
+  minutesFloat    Float?    @map("minutes_float") // Minutes as decimal
+
+  // Traditional stats
+  points          Int       @default(0)
+  rebounds        Int       @default(0)
+  assists         Int       @default(0)
+  steals          Int       @default(0)
+  blocks          Int       @default(0)
+  turnovers       Int       @default(0)
+
+  // Shooting
+  fgMade          Int       @default(0) @map("fg_made")
+  fgAttempted     Int       @default(0) @map("fg_attempted")
+  fgPct           Float?    @map("fg_pct")
+
+  threeMade       Int       @default(0) @map("three_made")
+  threeAttempted  Int       @default(0) @map("three_attempted")
+  threePct        Float?    @map("three_pct")
+
+  ftMade          Int       @default(0) @map("ft_made")
+  ftAttempted   Int       @default(0) @map("ft_attempted")
+  ftPct           Float?    @map("ft_pct")
+
+  // Advanced (calculated)
+  plusMinus       Int?      @map("plus_minus")
+  offensiveRebounds Int     @default(0) @map("offensive_rebounds")
+  defensiveRebounds Int     @default(0) @map("defensive_rebounds")
+
+  // Status
+  isStarter       Boolean   @default(false) @map("is_starter")
+  didNotPlay      Boolean   @default(false) @map("did_not_play")
+
+  // Relations
+  player          Player    @relation(fields: [playerId], references: [id])
+  game            Game      @relation(fields: [gameId], references: [id])
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@unique([playerId, gameId])
+  @@index([gameId])
+  @@index([playerId, season])
+  @@index([teamId, season])
+  @@map("player_game_stats")
+}
+
+model PlayerSeasonStats {
+  id              Int       @id @default(autoincrement())
+  playerId        Int       @map("player_id")
+  teamId          Int       @map("team_id")
+  season          Int
+
+  // Aggregates
+  gamesPlayed     Int       @default(0) @map("games_played")
+  gamesStarted    Int       @default(0) @map("games_started")
+  minutesAvg      Float?    @map("minutes_avg")
+
+  // Traditional averages
+  pointsAvg       Float?    @map("points_avg")
+  reboundsAvg     Float?    @map("rebounds_avg")
+  assistsAvg      Float?    @map("assists_avg")
+  stealsAvg       Float?    @map("steals_avg")
+  blocksAvg       Float?    @map("blocks_avg")
+  turnoversAvg    Float?    @map("turnovers_avg")
+
+  // Shooting
+  fgPct           Float?    @map("fg_pct")
+  threePct        Float?    @map("three_pct")
+  ftPct           Float?    @map("ft_pct")
+
+  // Advanced (calculated from games)
+  per             Float?    // Player Efficiency Rating
+  tsPct           Float?    @map("ts_pct") // True Shooting %
+  usageRate       Float?    @map("usage_rate") // Usage percentage
+
+  // Totals for calculations
+  totalPoints     Int       @default(0) @map("total_points")
+  totalMinutes    Int       @default(0) @map("total_minutes")
+
+  player          Player    @relation(fields: [playerId], references: [id])
+
+  @@unique([playerId, teamId, season])
+  @@index([teamId, season])
+  @@map("player_season_stats")
+}
+
+model InjuryReport {
+  id              Int       @id @default(autoincrement())
+  playerId        Int       @map("player_id")
+  teamId          Int       @map("team_id")
+  gameId          String?   @map("game_id")
+  season          Int
+
+  injuryType      String    @map("injury_type") // ankle, knee, etc.
+  status          String    // out, doubtful, questionable, probable, available
+  description     String?
+
+  reportDate      DateTime  @map("report_date")
+  expectedReturn  DateTime? @map("expected_return")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  player          Player    @relation(fields: [playerId], references: [id])
+
+  @@index([playerId])
+  @@index([teamId, season])
+  @@index([reportDate])
+  @@map("injury_reports")
+}

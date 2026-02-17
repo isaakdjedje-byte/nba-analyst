@@ -6,7 +6,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FallbackChain, FallbackChainConfig, FallbackLevel, DataQualityAssessment } from '../fallback-chain';
+import type { Logger } from 'pino';
+import {
+  FallbackChain,
+  FallbackChainConfig,
+  FallbackLevel,
+  DataQualityAssessment,
+  ModelRegistry,
+  DataQualityGates,
+} from '../fallback-chain';
 
 // Mock dependencies
 const mockLogger = {
@@ -15,15 +23,20 @@ const mockLogger = {
   error: vi.fn(),
   debug: vi.fn(),
   child: vi.fn(() => mockLogger),
-};
+} as unknown as Logger;
 
 const mockMlRegistry = {
   getModel: vi.fn(),
   listModels: vi.fn(),
+} as unknown as ModelRegistry & {
+  getModel: ReturnType<typeof vi.fn>;
+  listModels: ReturnType<typeof vi.fn>;
 };
 
 const mockDataQuality = {
   assess: vi.fn(),
+} as unknown as DataQualityGates & {
+  assess: ReturnType<typeof vi.fn>;
 };
 
 describe('FallbackChain', () => {
@@ -55,10 +68,10 @@ describe('FallbackChain', () => {
         failedChecks: [],
       };
       
-      (mockMlRegistry.getModel as any).mockResolvedValue(mockModel);
-      (mockDataQuality.assess as any).mockResolvedValue(mockQuality);
+      vi.mocked(mockMlRegistry.getModel).mockResolvedValue(mockModel);
+      vi.mocked(mockDataQuality.assess).mockResolvedValue(mockQuality);
       
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const input = {
         id: 'pred-1',
@@ -106,14 +119,14 @@ describe('FallbackChain', () => {
         failedChecks: [],
       };
       
-      (mockMlRegistry.getModel as any)
+      vi.mocked(mockMlRegistry.getModel)
         .mockResolvedValueOnce(primaryModel)
         .mockResolvedValueOnce(secondaryModel);
-      (mockDataQuality.assess as any)
+      vi.mocked(mockDataQuality.assess)
         .mockResolvedValueOnce(primaryQuality)
         .mockResolvedValueOnce(secondaryQuality);
       
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const input = {
         id: 'pred-1',
@@ -174,16 +187,16 @@ describe('FallbackChain', () => {
         failedChecks: [],
       };
       
-      (mockMlRegistry.getModel as any)
+      vi.mocked(mockMlRegistry.getModel)
         .mockResolvedValueOnce(primaryModel)
         .mockResolvedValueOnce(secondaryModel)
         .mockResolvedValueOnce(lastValidatedModel);
-      (mockDataQuality.assess as any)
+      vi.mocked(mockDataQuality.assess)
         .mockResolvedValueOnce(primaryQuality)
         .mockResolvedValueOnce(secondaryQuality)
         .mockResolvedValueOnce(lastValidatedQuality);
       
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const input = {
         id: 'pred-1',
@@ -219,13 +232,13 @@ describe('FallbackChain', () => {
         failedChecks: ['quality_below_threshold'],
       };
       
-      (mockMlRegistry.getModel as any)
+      vi.mocked(mockMlRegistry.getModel)
         .mockResolvedValueOnce(primaryModel)
         .mockResolvedValueOnce(secondaryModel)
         .mockResolvedValueOnce(lastValidatedModel);
-      (mockDataQuality.assess as any).mockResolvedValue(failedQuality);
+      vi.mocked(mockDataQuality.assess).mockResolvedValue(failedQuality);
       
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const input = {
         id: 'pred-1',
@@ -259,10 +272,10 @@ describe('FallbackChain', () => {
         failedChecks: ['complete_source_failure'],
       };
       
-      (mockMlRegistry.getModel as any).mockResolvedValue({ id: 'model-v2' });
-      (mockDataQuality.assess as any).mockResolvedValue(failedQuality);
+      vi.mocked(mockMlRegistry.getModel).mockResolvedValue({ id: 'model-v2', name: 'Primary Model', version: '2.0' });
+      vi.mocked(mockDataQuality.assess).mockResolvedValue(failedQuality);
       
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const input = {
         id: 'pred-1',
@@ -293,12 +306,12 @@ describe('FallbackChain', () => {
       const secondaryModel = { id: 'model-v1', name: 'Secondary Model' };
       const lastValidatedModel = { id: 'model-baseline', name: 'Baseline Model' };
       
-      (mockMlRegistry.getModel as any)
+      vi.mocked(mockMlRegistry.getModel)
         .mockResolvedValueOnce(primaryModel)
         .mockResolvedValueOnce(secondaryModel)
         .mockResolvedValueOnce(lastValidatedModel);
       
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
 
       // Act & Assert
       const model1 = await fallbackChain['getModelForLevel']('primary');
@@ -315,7 +328,7 @@ describe('FallbackChain', () => {
   describe('createForcedNoBet', () => {
     it('should create a forced No-Bet decision with correct reason', () => {
       // Arrange
-      const fallbackChain = new FallbackChain(config, mockMlRegistry as any, mockDataQuality as any, mockLogger as any);
+      const fallbackChain = new FallbackChain(config, mockMlRegistry, mockDataQuality, mockLogger);
       
       const attempts = [
         { level: 'primary' as FallbackLevel, modelId: 'model-v2', qualityScore: 0.28, passed: false, reason: 'insufficient_source_coverage' },

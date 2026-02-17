@@ -1,5 +1,23 @@
 // Ingestion Module
-// Provides data ingestion from multiple sources with validation and drift detection
+// Provides data ingestion from multiple sources with validation, drift detection, and quality metrics
+
+// Circuit Breaker
+export {
+  CircuitBreaker,
+  CircuitBreakerRegistry,
+  CircuitBreakerOpenError,
+  circuitBreakerRegistry,
+  type CircuitState,
+  type CircuitBreakerConfig,
+  type CircuitBreakerMetrics,
+} from './circuit-breaker';
+
+// Data Quality Metrics
+export {
+  DataQualityMetricsService,
+  dataQualityMetrics,
+  type DataQualityMetrics,
+} from './data-quality-metrics';
 
 // Providers
 export {
