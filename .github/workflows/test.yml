@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      DATABASE_URL: postgresql://test:test@localhost:5432/test
+      DATABASE_URL: postgresql://test:test@localhost:5432/test?connection_limit=5
 
     steps:
       - name: Checkout code
@@ -151,6 +151,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint, typecheck, contracts, migration-gate]
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test?connection_limit=5
 
     steps:
       - name: Checkout code
@@ -179,6 +181,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build]
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test?connection_limit=5
     outputs:
       current-epic: ${{ steps.read-epic.outputs.epic }}
 
