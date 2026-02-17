@@ -21,8 +21,8 @@ module.exports = {
       // URL to test
       url: [
         'http://localhost:3000/',
-        'http://localhost:3000/picks',
-        'http://localhost:3000/no-bet',
+        'http://localhost:3000/dashboard/picks',
+        'http://localhost:3000/dashboard/no-bet',
       ],
       
       // Use mobile emulation
