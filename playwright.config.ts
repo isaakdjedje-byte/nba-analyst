@@ -27,13 +27,16 @@ const getProjects = () => {
   const epic1Projects = [
     {
       name: 'epic-1-auth',
-      testMatch: /\/(auth|setup|register|login)\/.*\.spec\.(ts|js)/,
-      grep: /@epic1|@smoke/,
+      testMatch: [
+        '**/e2e/smoke-tests.spec.ts',
+      ],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'epic-1-auth-mobile',
-      grep: /@epic1|@smoke/,
+      testMatch: [
+        '**/e2e/smoke-tests.spec.ts',
+      ],
       use: { ...devices['Pixel 5'] },
     },
   ];

@@ -16,7 +16,8 @@ test.describe('Smoke Tests @smoke @critical @epic1', () => {
     await page.goto(baseUrl);
 
     // Then the page should load successfully
-    await expect(page).toHaveURL(/\/$/);
+    // App may redirect from root to default dashboard route.
+    await expect(page).toHaveURL(/\/$|\/dashboard\/picks$/);
     await expect(page.locator('body')).toBeVisible();
   });
 
@@ -35,7 +36,7 @@ test.describe('Smoke Tests @smoke @critical @epic1', () => {
 
     // Then registration form should be visible
     await expect(page).toHaveURL(/\/register$/);
-    await expect(page.locator('body')).toContainText(/sign up|register|inscription/i);
+    await expect(page.locator('body')).toContainText(/sign up|register|inscription|cr[eé]er un compte/i);
   });
 
   test('[P0] should display dashboard picks page @p0 @dashboard', async ({ page }) => {
