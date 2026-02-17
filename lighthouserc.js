@@ -11,8 +11,8 @@ module.exports = {
       // Run Lighthouse 3 times for statistical significance
       numberOfRuns: 3,
       
-      // Start server
-      startServerCommand: 'npm run dev',
+      // Start production server (build runs in workflow before LHCI)
+      startServerCommand: 'npm run start',
       
       // Wait for server to be ready
       startServerReadyPattern: 'Ready in|Ready on',
@@ -20,9 +20,9 @@ module.exports = {
       
       // URL to test
       url: [
-        'http://localhost:3000/',
-        'http://localhost:3000/dashboard/picks',
-        'http://localhost:3000/dashboard/no-bet',
+        'http://localhost:3000/login',
+        'http://localhost:3000/register',
+        'http://localhost:3000/settings/privacy',
       ],
       
       // Use mobile emulation
