@@ -22,197 +22,64 @@ import type {
 import { PHASE_ORDER } from '@/features/logs/types';
 
 /**
- * Generate timeline events from a policy decision
- * This aggregates events from ingestion, ML inference, policy evaluation, and decision output
- * 
- * In a real implementation, this would query additional tables for:
- * - Data ingestion events (from data sources)
- * - ML inference outputs (from predictions)
- * - Policy evaluation results (from policy engine)
- * - Gate evaluation details
- * 
- * For now, we generate mock timeline data based on the decision record
+ * Generate timeline events from persisted decision data.
  */
 function generateTimelineEvents(decision: PolicyDecisionWithRelations): TimelineEvent[] {
-  const events: TimelineEvent[] = [];
-  const baseTimestamp = new Date(decision.executedAt).getTime();
+  const executedAtMs = new Date(decision.executedAt).getTime();
+  const publishedAtMs = decision.publishedAt ? new Date(decision.publishedAt).getTime() : executedAtMs;
   const traceId = decision.traceId;
 
-  // Phase 1: Data Ingestion
-  const ingestionEvents: TimelineEvent[] = [
-    {
-      id: crypto.randomUUID(),
-      phase: 'DATA_INGESTION',
-      name: 'Match Data Fetch',
-      description: 'Récupération des données du match depuis les sources externes',
-      timestamp: new Date(baseTimestamp - 5000).toISOString(),
-      duration: 1200,
-      status: 'success',
-      traceId,
-      inputs: { matchId: decision.matchId },
-      outputs: { 
-        homeTeam: decision.homeTeam, 
-        awayTeam: decision.awayTeam,
-        matchDate: decision.matchDate 
-      },
-      details: { source: 'ESPN API', fetchedAt: new Date(baseTimestamp - 5000).toISOString() }
-    },
-    {
-      id: crypto.randomUUID(),
-      phase: 'DATA_INGESTION',
-      name: 'Historical Data Enrichment',
-      description: 'Enrichissement avec les données historiques',
-      timestamp: new Date(baseTimestamp - 3800).toISOString(),
-      duration: 800,
-      status: 'success',
-      traceId,
-      inputs: { matchId: decision.matchId },
-      outputs: { historicalGames: 15, formData: 'retrieved' },
-      details: { cacheHit: true }
-    },
-  ];
-  events.push(...ingestionEvents);
+  const policyPassed = decision.confidenceGate
+    && decision.edgeGate
+    && decision.driftGate
+    && !decision.hardStopGate;
 
-  // Phase 2: ML Inference
-  const mlEvents: TimelineEvent[] = [
+  const events: TimelineEvent[] = [
     {
       id: crypto.randomUUID(),
       phase: 'ML_INFERENCE',
-      name: 'Confidence Prediction',
-      description: 'Prédiction du score de confiance par le modèle ML',
-      timestamp: new Date(baseTimestamp - 3000).toISOString(),
-      duration: 450,
-      status: 'success',
+      name: 'Model Inference Result',
+      description: 'Lecture des sorties ML stockees pour cette decision',
+      timestamp: new Date(executedAtMs).toISOString(),
+      status: decision.confidence > 0 ? 'success' : 'skipped',
       traceId,
-      inputs: { 
-        homeTeam: decision.homeTeam, 
-        awayTeam: decision.awayTeam,
-        historicalData: 'enriched'
+      outputs: {
+        confidence: decision.confidence,
+        edge: decision.edge,
+        modelVersion: decision.modelVersion,
       },
-      outputs: { confidence: decision.confidence },
-      details: { modelVersion: decision.modelVersion }
-    },
-    {
-      id: crypto.randomUUID(),
-      phase: 'ML_INFERENCE',
-      name: 'Edge Calculation',
-      description: 'Calcul du paramètre edge pour le picks',
-      timestamp: new Date(baseTimestamp - 2550).toISOString(),
-      duration: 200,
-      status: decision.edge !== null ? 'success' : 'skipped',
-      traceId,
-      inputs: { confidence: decision.confidence },
-      outputs: decision.edge !== null ? { edge: decision.edge } : undefined,
-      details: decision.edge !== null ? { calculation: 'standard' } : { reason: 'confidence below threshold' }
-    },
-  ];
-  events.push(...mlEvents);
-
-  // Phase 3: Policy Evaluation
-  const policyEvents: TimelineEvent[] = [
-    {
-      id: crypto.randomUUID(),
-      phase: 'POLICY_EVALUATION',
-      name: 'Confidence Gate Evaluation',
-      description: 'Évaluation de la gate de confiance',
-      timestamp: new Date(baseTimestamp - 2350).toISOString(),
-      duration: 50,
-      status: decision.confidenceGate ? 'success' : 'failure',
-      traceId,
-      inputs: { confidence: decision.confidence, threshold: 0.65 },
-      outputs: { passed: decision.confidenceGate, threshold: 0.65 },
-      details: { gateName: 'confidence_gate' }
     },
     {
       id: crypto.randomUUID(),
       phase: 'POLICY_EVALUATION',
-      name: 'Edge Gate Evaluation',
-      description: 'Évaluation de la gate edge',
-      timestamp: new Date(baseTimestamp - 2300).toISOString(),
-      duration: 40,
-      status: decision.edgeGate ? 'success' : 'skipped',
+      name: 'Policy Gates Evaluation',
+      description: 'Evaluation des garde-fous de publication',
+      timestamp: new Date(executedAtMs).toISOString(),
+      status: policyPassed ? 'success' : 'failure',
       traceId,
-      inputs: { edge: decision.edge, threshold: 0.05 },
-      outputs: decision.edge !== null ? { passed: decision.edgeGate, threshold: 0.05 } : undefined,
-      details: decision.edge !== null ? { gateName: 'edge_gate' } : { reason: 'edge not calculated' }
-    },
-    {
-      id: crypto.randomUUID(),
-      phase: 'POLICY_EVALUATION',
-      name: 'Drift Gate Evaluation',
-      description: 'Évaluation de la gate de drift',
-      timestamp: new Date(baseTimestamp - 2260).toISOString(),
-      duration: 60,
-      status: decision.driftGate ? 'success' : 'failure',
-      traceId,
-      inputs: { driftScore: 0.02, threshold: 0.1 },
-      outputs: { passed: decision.driftGate, driftScore: 0.02 },
-      details: { gateName: 'drift_gate' }
-    },
-    {
-      id: crypto.randomUUID(),
-      phase: 'POLICY_EVALUATION',
-      name: 'Hard Stop Gate Evaluation',
-      description: 'Évaluation de la gate hard stop',
-      timestamp: new Date(baseTimestamp - 2200).toISOString(),
-      duration: 100,
-      status: decision.hardStopGate ? 'failure' : 'success',
-      traceId,
-      inputs: { hardStopConditions: ['injury', 'weather', 'rest'] },
-      outputs: { 
-        passed: !decision.hardStopGate, 
-        reason: decision.hardStopReason 
-      },
-      details: { gateName: 'hard_stop_gate' }
-    },
-  ];
-  events.push(...policyEvents);
-
-  // Phase 4: Decision Output
-  const outputEvents: TimelineEvent[] = [
-    {
-      id: crypto.randomUUID(),
-      phase: 'DECISION_OUTPUT',
-      name: 'Final Decision Computation',
-      description: 'Calcul de la décision finale basée sur les évaluations',
-      timestamp: new Date(baseTimestamp - 2100).toISOString(),
-      duration: 30,
-      status: 'success',
-      traceId,
-      inputs: { 
+      outputs: {
         confidenceGate: decision.confidenceGate,
         edgeGate: decision.edgeGate,
         driftGate: decision.driftGate,
-        hardStopGate: decision.hardStopGate
+        hardStopGate: decision.hardStopGate,
+        hardStopReason: decision.hardStopReason,
       },
-      outputs: { 
-        status: decision.status,
-        recommendedPick: decision.recommendedPick,
-        rationale: decision.rationale
-      },
-      details: { policyVersion: 'v1.0' }
     },
     {
       id: crypto.randomUUID(),
       phase: 'DECISION_OUTPUT',
-      name: 'Decision Recording',
-      description: 'Enregistrement de la décision dans la base de données',
-      timestamp: new Date(baseTimestamp - 2070).toISOString(),
-      duration: 70,
+      name: 'Decision Publication',
+      description: 'Resultat final enregistre et publie',
+      timestamp: new Date(publishedAtMs).toISOString(),
       status: 'success',
       traceId,
-      inputs: { 
-        decisionId: decision.id,
-        status: decision.status
+      outputs: {
+        status: decision.status,
+        recommendedPick: decision.recommendedPick,
+        publishedAt: decision.publishedAt,
       },
-      outputs: { 
-        recorded: true,
-        recordId: decision.id
-      },
-      details: { database: 'postgresql' }
     },
   ];
-  events.push(...outputEvents);
 
   // Sort events by timestamp
   return events.sort((a, b) => 

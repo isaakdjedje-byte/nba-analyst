@@ -9,8 +9,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { GlobalGuardrailState, GuardrailStatus } from '../types';
-import { getGlobalGuardrailStatus, getMockGuardrailStatus } from '../services/guardrail-service';
+import type { GlobalGuardrailState } from '../types';
+import { getGlobalGuardrailStatus, createDegradedGuardrailStatus } from '../services/guardrail-service';
 
 interface UseGuardrailStatusReturn {
   status: GlobalGuardrailState | null;
@@ -24,10 +24,6 @@ interface UseGuardrailStatusOptions {
   refetchOnFocus?: boolean;
   /** Polling interval in milliseconds (0 to disable) */
   pollingInterval?: number;
-  /** Use mock data instead of API */
-  useMock?: boolean;
-  /** Initial mock status (for testing) */
-  initialMockStatus?: GuardrailStatus;
 }
 
 /**
@@ -50,8 +46,6 @@ export function useGuardrailStatus(
   const {
     refetchOnFocus = false,
     pollingInterval = 0,
-    useMock = false,
-    initialMockStatus = 'HEALTHY',
   } = options;
 
   const [status, setStatus] = useState<GlobalGuardrailState | null>(null);
@@ -63,18 +57,16 @@ export function useGuardrailStatus(
     setError(null);
 
     try {
-      const data = useMock
-        ? getMockGuardrailStatus(initialMockStatus)
-        : await getGlobalGuardrailStatus();
+      const data = await getGlobalGuardrailStatus();
       setStatus(data);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch guardrail status'));
       // Set a degraded state on error
-      setStatus(getMockGuardrailStatus('WARNING'));
+      setStatus(createDegradedGuardrailStatus());
     } finally {
       setIsLoading(false);
     }
-  }, [useMock, initialMockStatus]);
+  }, []);
 
   // Initial fetch
   useEffect(() => {

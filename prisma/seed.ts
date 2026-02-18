@@ -1,5 +1,4 @@
-import { PrismaClient, Role, RunStatus } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -9,72 +8,6 @@ const prisma = new PrismaClient();
  */
 async function main() {
   console.log('Starting database seed...');
-
-  // Hash passwords for dev users (password: 'password123')
-  const hashedPassword = await bcrypt.hash('password123', 10);
-
-  // Create admin user
-  const adminUser = await prisma.user.upsert({
-    where: { email: 'admin@example.com' },
-    update: {},
-    create: {
-      email: 'admin@example.com',
-      password: hashedPassword,
-      role: Role.admin,
-      privacyPolicyAcceptedAt: new Date(),
-      privacyPolicyVersion: '1.0.0',
-    },
-  });
-  console.log('Created admin user:', adminUser.email);
-
-  // Create ops user
-  const opsUser = await prisma.user.upsert({
-    where: { email: 'ops@example.com' },
-    update: {},
-    create: {
-      email: 'ops@example.com',
-      password: hashedPassword,
-      role: Role.ops,
-      privacyPolicyAcceptedAt: new Date(),
-      privacyPolicyVersion: '1.0.0',
-    },
-  });
-  console.log('Created ops user:', opsUser.email);
-
-  // Create regular user
-  const regularUser = await prisma.user.upsert({
-    where: { email: 'user@example.com' },
-    update: {},
-    create: {
-      email: 'user@example.com',
-      password: hashedPassword,
-      role: Role.user,
-      privacyPolicyAcceptedAt: new Date(),
-      privacyPolicyVersion: '1.0.0',
-    },
-  });
-  console.log('Created regular user:', regularUser.email);
-
-  // Create sample daily run
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const dailyRun = await prisma.dailyRun.upsert({
-    where: { runDate: today },
-    update: {},
-    create: {
-      runDate: today,
-      status: RunStatus.PENDING,
-      triggeredBy: 'manual',
-      traceId: `seed-${Date.now()}`,
-      totalMatches: 0,
-      predictionsCount: 0,
-      picksCount: 0,
-      noBetCount: 0,
-      hardStopCount: 0,
-    },
-  });
-  console.log('Created daily run for:', today.toISOString().split('T')[0]);
 
   // Create data retention policies
   const retentionPolicies = [
@@ -101,10 +34,7 @@ async function main() {
   console.log('Created data retention policies');
 
   console.log('\n✅ Database seed completed successfully!');
-  console.log('\nTest credentials:');
-  console.log('  Admin: admin@example.com / password123');
-  console.log('  Ops:   ops@example.com / password123');
-  console.log('  User:  user@example.com / password123');
+  console.log('No synthetic users or sample runs were created.');
 }
 
 main()

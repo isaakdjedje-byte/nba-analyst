@@ -34,36 +34,14 @@ export async function getGlobalGuardrailStatus(): Promise<GlobalGuardrailState> 
   return apiResponse.data;
 }
 
-/**
- * Mock implementation for development
- * AC2: Affichage de la cause et action recommandée
- * @param status The guardrail status to mock
- * @returns Mock GlobalGuardrailState
- */
-export function getMockGuardrailStatus(status: GuardrailStatus = 'HEALTHY'): GlobalGuardrailState {
-  const configs = {
-    HEALTHY: {
-      cause: 'Tous les indicateurs sont dans les limites',
-      action: 'Consultation normale des recommandations'
-    },
-    WARNING: {
-      cause: 'Approche des limites de risque',
-      action: 'Surveillance recommandée'
-    },
-    HARD_STOP: {
-      cause: 'Cap de perte journalier atteint',
-      action: 'Reprise au prochain cycle'
-    }
-  };
-
-  const config = configs[status];
-  
+export function createDegradedGuardrailStatus(): GlobalGuardrailState {
+  const now = new Date();
   return {
-    status,
-    cause: config.cause,
-    recommendedAction: config.action,
-    updatedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24h
+    status: 'WARNING',
+    cause: 'Statut guardrail indisponible temporairement',
+    recommendedAction: 'Réessayez dans quelques instants',
+    updatedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
   };
 }
 

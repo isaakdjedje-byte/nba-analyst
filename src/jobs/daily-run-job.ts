@@ -126,35 +126,76 @@ export async function processDailyRun(
     minCompleteness: 0.8,
   }, logger);
 
-  // Create mock model registry for fallback chain
-  const mockModelRegistry = {
-    getModel: async (modelId: string) => {
-      const models: Record<string, { id: string; name: string; version: string }> = {
-        'model-v2': { id: 'model-v2', name: 'Primary Model', version: '2.0' },
-        'model-v1': { id: 'model-v1', name: 'Secondary Model', version: '1.0' },
-        'model-baseline': { id: 'model-baseline', name: 'Baseline Model', version: '1.0' },
-      };
-      return models[modelId] || null;
+  const availableModels = await prisma.mLModel.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: 'desc' },
+    take: 3,
+    select: {
+      id: true,
+      version: true,
+      algorithm: true,
     },
-    listModels: async () => [
-      { id: 'model-v2', name: 'Primary Model', version: '2.0' },
-      { id: 'model-v1', name: 'Secondary Model', version: '1.0' },
-      { id: 'model-baseline', name: 'Baseline Model', version: '1.0' },
-    ],
+  });
+
+  const fallbackModels = availableModels.length > 0
+    ? availableModels
+    : await prisma.mLModel.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: {
+        id: true,
+        version: true,
+        algorithm: true,
+      },
+    });
+
+  const modelRegistry = {
+    getModel: async (modelId: string) => {
+      const model = await prisma.mLModel.findUnique({
+        where: { id: modelId },
+        select: { id: true, version: true, algorithm: true },
+      });
+      if (!model) return null;
+      return {
+        id: model.id,
+        name: model.algorithm,
+        version: model.version,
+      };
+    },
+    listModels: async () => {
+      const models = await prisma.mLModel.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { id: true, version: true, algorithm: true },
+      });
+      return models.map((model) => ({
+        id: model.id,
+        name: model.algorithm,
+        version: model.version,
+      }));
+    },
   };
 
   // Create fallback chain
+  const primaryModel = fallbackModels[0];
+  const secondaryModel = fallbackModels[1] ?? fallbackModels[0];
+  const lastValidatedModel = fallbackModels[2] ?? fallbackModels[1] ?? fallbackModels[0];
+
+  if (!primaryModel || !secondaryModel || !lastValidatedModel) {
+    throw new Error('No ML model available for fallback chain');
+  }
+
   const fallbackConfig: FallbackChainConfig = {
-    primaryModelId: 'model-v2',
-    secondaryModelId: 'model-v1',
-    lastValidatedModelId: 'model-baseline',
+    primaryModelId: primaryModel.id,
+    secondaryModelId: secondaryModel.id,
+    lastValidatedModelId: lastValidatedModel.id,
     reliabilityThreshold: 0.5,
     fallbackLevels: ['primary', 'secondary', 'last_validated', 'force_no_bet'],
   };
   
   const fallbackChain = new FallbackChain(
     fallbackConfig,
-    mockModelRegistry as unknown as ConstructorParameters<typeof FallbackChain>[1],
+    modelRegistry as unknown as ConstructorParameters<typeof FallbackChain>[1],
     dataQualityGates,
     logger
   );

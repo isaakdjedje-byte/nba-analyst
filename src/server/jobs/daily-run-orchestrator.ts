@@ -206,9 +206,6 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
       const mlStart = Date.now();
       
       // Generate predictions for today's matches
-      // In production, this would call actual ML models
-      // For now, we'll create placeholder predictions
-      
       predictionsCount = await generatePredictions(runId, runDate, traceId);
       
       mlInferenceDuration = Date.now() - mlStart;
@@ -410,8 +407,6 @@ async function generatePredictions(runId: string, runDate: Date, traceId: string
           continue;
         }
         
-        // Generate ML prediction using a simple algorithm
-        // In production, this would call an actual ML model API
         const prediction = await generateMLPrediction(game, systemUser.id, runId, traceId);
         
         if (prediction) {
@@ -446,21 +441,27 @@ async function generateMLPrediction(
   const homeTeam = game.homeTeam;
   const awayTeam = game.awayTeam;
   
-  if (!homeTeam || !awayTeam) {
+  if (!homeTeam || !awayTeam || homeTeam.id == null || awayTeam.id == null || !homeTeam.name || !awayTeam.name) {
     console.warn(`[Pipeline] Missing team data for game ${game.id}`);
     return null;
   }
   
+  const parsedGameId = typeof game.id === 'string' ? parseInt(game.id, 10) : game.id;
+  if (!Number.isFinite(parsedGameId)) {
+    console.warn(`[Pipeline] Invalid numeric game id for ${game.id}`);
+    return null;
+  }
+
   try {
     // Use real ML prediction service
     const predictionService = getPredictionService();
     
     const predictionInput: MLPredictionInput = {
-      gameId: typeof game.id === 'string' ? parseInt(game.id) : game.id,
-      homeTeamId: homeTeam.id || 1,
-      awayTeamId: awayTeam.id || 2,
-      homeTeamName: homeTeam.name || 'Home',
-      awayTeamName: awayTeam.name || 'Away',
+      gameId: parsedGameId,
+      homeTeamId: homeTeam.id,
+      awayTeamId: awayTeam.id,
+      homeTeamName: homeTeam.name,
+      awayTeamName: awayTeam.name,
       scheduledAt: game.date ? new Date(game.date) : new Date(),
     };
     
@@ -472,8 +473,8 @@ async function generateMLPrediction(
         matchId: game.id?.toString() || `game-${Date.now()}`,
         matchDate: game.date ? new Date(game.date) : new Date(),
         league: game.league || 'nba',
-        homeTeam: homeTeam.name || 'Unknown',
-        awayTeam: awayTeam.name || 'Unknown',
+        homeTeam: homeTeam.name,
+        awayTeam: awayTeam.name,
         winnerPrediction: prediction.prediction.winner,
         scorePrediction: `${prediction.score.predictedHomeScore}-${prediction.score.predictedAwayScore}`,
         overUnderPrediction: prediction.overUnder.line,
@@ -492,67 +493,9 @@ async function generateMLPrediction(
     
     return dbPrediction;
   } catch (error) {
-    // Fallback to baseline if ML model fails
-    console.warn(`[Pipeline] ML prediction failed for ${homeTeam.name} vs ${awayTeam.name}, using baseline:`, error);
-    
-    return generateBaselinePrediction(game, userId, runId, traceId);
-  }
-}
-
-/**
- * Baseline prediction algorithm (fallback when ML model unavailable)
- */
-async function generateBaselinePrediction(
-  game: IngestionGameRecord,
-  userId: string,
-  runId: string,
-  traceId: string
-): Promise<CreatedPrediction | null> {
-  const homeTeam = game.homeTeam;
-  const awayTeam = game.awayTeam;
-  
-  if (!homeTeam || !awayTeam) {
-    console.warn(`[Pipeline] Missing team data for game ${game.id}`);
+    console.warn(`[Pipeline] ML prediction failed for ${homeTeam.name} vs ${awayTeam.name}:`, error);
     return null;
   }
-  
-  // Baseline: home court advantage + minimal variance
-  const homeAdvantage = 0.08;
-  const confidence = Math.min(0.85, Math.max(0.55, 0.65 + homeAdvantage));
-  const winnerPrediction = 'HOME';
-  const edge = (confidence - 0.5) * 100;
-  
-  // Predicted scores
-  const homeScore = 110;
-  const awayScore = 105;
-  const scorePrediction = `${homeScore}-${awayScore}`;
-  const overUnderPrediction = homeScore + awayScore + 0.5;
-  
-  // Create prediction in database
-  const prediction = await prisma.prediction.create({
-    data: {
-      matchId: game.id?.toString() || `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      matchDate: game.date ? new Date(game.date) : new Date(),
-      league: game.league || 'nba',
-      homeTeam: homeTeam.name || 'Unknown',
-      awayTeam: awayTeam.name || 'Unknown',
-      winnerPrediction: winnerPrediction,
-      scorePrediction: scorePrediction,
-      overUnderPrediction: overUnderPrediction,
-      confidence: confidence,
-      edge: edge,
-      modelVersion: 'v0.0.0-baseline',
-      featuresHash: 'baseline-fallback',
-      status: 'pending',
-      userId: userId,
-      runId: runId,
-      traceId: `${traceId}-pred-${game.id}`,
-    },
-  });
-  
-  console.log(`[Pipeline] Baseline Prediction created: ${homeTeam.name} vs ${awayTeam.name} (BASELINE FALLBACK)`);
-  
-  return prediction;
 }
 
 /**
