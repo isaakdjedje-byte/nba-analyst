@@ -44,8 +44,8 @@ function log(message, type = 'info') {
 // ESPN API Base URL
 const ESPN_API_BASE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 
-// Rate limiting
-const RATE_LIMIT_MS = 1000; // 1 request per second to be respectful
+// Rate limiting (override with env RATE_LIMIT_MS)
+const RATE_LIMIT_MS = Number.parseInt(process.env.RATE_LIMIT_MS || '150', 10);
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -125,8 +125,15 @@ async function fetchGamesForDate(date) {
       
       games.push({
         externalId: parseInt(event.id),
-        season: 2024,
-        seasonType: 'Regular Season',
+        season: event.season?.year || new Date(event.date).getUTCFullYear(),
+        seasonType:
+          event.season?.slug === 'playoffs'
+            ? 'Playoffs'
+            : event.season?.slug === 'preseason'
+              ? 'Pre Season'
+              : event.season?.slug === 'all-star'
+                ? 'All Star'
+                : 'Regular Season',
         gameDate: new Date(event.date),
         status: isCompleted ? 'completed' : 'scheduled',
         homeTeamId: parseInt(homeTeam.team?.id),
@@ -159,29 +166,59 @@ async function fetchBoxScore(gameId) {
   // Extract team stats
   const homeStats = box.teams?.find(t => t.homeAway === 'home');
   const awayStats = box.teams?.find(t => t.homeAway === 'away');
+  const competitors = data.header?.competitions?.[0]?.competitors || [];
+  const homeCompetitor = competitors.find(c => c.homeAway === 'home');
+  const awayCompetitor = competitors.find(c => c.homeAway === 'away');
   
   if (!homeStats || !awayStats) return null;
   
-  return {
-    homePoints: parseInt(homeStats.statistics?.find(s => s.name === 'points')?.displayValue) || 0,
-    homeRebounds: parseInt(homeStats.statistics?.find(s => s.name === 'rebounds')?.displayValue) || 0,
-    homeAssists: parseInt(homeStats.statistics?.find(s => s.name === 'assists')?.displayValue) || 0,
-    homeSteals: parseInt(homeStats.statistics?.find(s => s.name === 'steals')?.displayValue) || 0,
-    homeBlocks: parseInt(homeStats.statistics?.find(s => s.name === 'blocks')?.displayValue) || 0,
-    homeTurnovers: parseInt(homeStats.statistics?.find(s => s.name === 'turnovers')?.displayValue) || 0,
-    homeFgPct: parseFloat(homeStats.statistics?.find(s => s.name === 'fieldGoalPct')?.displayValue) / 100 || 0.45,
-    home3pPct: parseFloat(homeStats.statistics?.find(s => s.name === 'threePointFieldGoalPct')?.displayValue) / 100 || 0.35,
-    homeFtPct: parseFloat(homeStats.statistics?.find(s => s.name === 'freeThrowPct')?.displayValue) / 100 || 0.75,
-    awayPoints: parseInt(awayStats.statistics?.find(s => s.name === 'points')?.displayValue) || 0,
-    awayRebounds: parseInt(awayStats.statistics?.find(s => s.name === 'rebounds')?.displayValue) || 0,
-    awayAssists: parseInt(awayStats.statistics?.find(s => s.name === 'assists')?.displayValue) || 0,
-    awaySteals: parseInt(awayStats.statistics?.find(s => s.name === 'steals')?.displayValue) || 0,
-    awayBlocks: parseInt(awayStats.statistics?.find(s => s.name === 'blocks')?.displayValue) || 0,
-    awayTurnovers: parseInt(awayStats.statistics?.find(s => s.name === 'turnovers')?.displayValue) || 0,
-    awayFgPct: parseFloat(awayStats.statistics?.find(s => s.name === 'fieldGoalPct')?.displayValue) / 100 || 0.43,
-    away3pPct: parseFloat(awayStats.statistics?.find(s => s.name === 'threePointFieldGoalPct')?.displayValue) / 100 || 0.33,
-    awayFtPct: parseFloat(awayStats.statistics?.find(s => s.name === 'freeThrowPct')?.displayValue) / 100 || 0.73,
+  const getValue = (stats, names) => {
+    for (const name of names) {
+      const value = stats?.find(s => s.name === name)?.displayValue;
+      if (value !== undefined && value !== null && String(value).trim().length > 0) {
+        return value;
+      }
+    }
+    return null;
   };
+  const intStat = (stats, names) => {
+    const value = getValue(stats, Array.isArray(names) ? names : [names]);
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const pctStat = (stats, names) => {
+    const value = getValue(stats, Array.isArray(names) ? names : [names]);
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed > 1 ? parsed / 100 : parsed;
+  };
+
+  const parsed = {
+    homePoints: intStat([{ name: 'score', displayValue: homeCompetitor?.score }, ...(homeStats.statistics || [])], 'score'),
+    homeRebounds: intStat(homeStats.statistics, ['totalRebounds', 'rebounds']),
+    homeAssists: intStat(homeStats.statistics, ['assists']),
+    homeSteals: intStat(homeStats.statistics, ['steals']),
+    homeBlocks: intStat(homeStats.statistics, ['blocks']),
+    homeTurnovers: intStat(homeStats.statistics, ['totalTurnovers', 'turnovers']),
+    homeFgPct: pctStat(homeStats.statistics, ['fieldGoalPct']),
+    home3pPct: pctStat(homeStats.statistics, ['threePointFieldGoalPct', 'threePointPct']),
+    homeFtPct: pctStat(homeStats.statistics, ['freeThrowPct']),
+    awayPoints: intStat([{ name: 'score', displayValue: awayCompetitor?.score }, ...(awayStats.statistics || [])], 'score'),
+    awayRebounds: intStat(awayStats.statistics, ['totalRebounds', 'rebounds']),
+    awayAssists: intStat(awayStats.statistics, ['assists']),
+    awaySteals: intStat(awayStats.statistics, ['steals']),
+    awayBlocks: intStat(awayStats.statistics, ['blocks']),
+    awayTurnovers: intStat(awayStats.statistics, ['totalTurnovers', 'turnovers']),
+    awayFgPct: pctStat(awayStats.statistics, ['fieldGoalPct']),
+    away3pPct: pctStat(awayStats.statistics, ['threePointFieldGoalPct', 'threePointPct']),
+    awayFtPct: pctStat(awayStats.statistics, ['freeThrowPct']),
+  };
+
+  if (Object.values(parsed).some(v => v === null)) {
+    return null;
+  }
+
+  return parsed;
 }
 
 async function saveGame(game, boxScore) {
@@ -324,7 +361,7 @@ async function main() {
   if (totalGames >= 50) {
     log('', 'info');
     log('Ready to train model!', 'success');
-    log('Run: node scripts/train-model.js --activate', 'info');
+    log('Run: npx tsx scripts/train-ml-model.ts --activate', 'info');
   } else {
     log('', 'warning');
     log('Not enough data. Try a larger date range.', 'warning');

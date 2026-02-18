@@ -571,7 +571,7 @@ async function main() {
   if (saved >= 50) {
     log('', 'success');
     log('Ready to train!', 'success');
-    log('Run: node scripts/train-model.js --activate', 'info');
+    log('Run: npx tsx scripts/train-ml-model.ts --activate', 'info');
   }
   
   await prisma.$disconnect();
