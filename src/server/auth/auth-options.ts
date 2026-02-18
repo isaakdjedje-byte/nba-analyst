@@ -115,8 +115,15 @@ export const authOptions: NextAuthOptions = {
         token.iat = Date.now();
       }
 
+      // NextAuth/JWT iat can be in seconds while Date.now() is milliseconds.
+      // Normalize to milliseconds to avoid false expiry and RBAC lockout.
+      const normalizedIat = (token.iat as number) < 1_000_000_000_000
+        ? (token.iat as number) * 1000
+        : (token.iat as number);
+      token.iat = normalizedIat;
+
       // Refresh token if it's older than 7 days (1 week before expiry)
-      const tokenAge = Date.now() - (token.iat as number);
+      const tokenAge = Date.now() - normalizedIat;
       const weekInMs = 7 * 24 * 60 * 60 * 1000;
       const maxTokenAge = 30 * 24 * 60 * 60 * 1000; // 30 days max
 
