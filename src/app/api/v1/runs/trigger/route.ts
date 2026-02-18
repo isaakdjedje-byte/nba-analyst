@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
     
     const requestedSkipIngestion = body.skipIngestion === true;
     const requestedSkipMLInference = body.skipMLInference === true;
-    const allowSkipFlags = process.env.NODE_ENV !== 'production';
+    const allowSkipFlags =
+      process.env.NODE_ENV !== 'production' && process.env.ALLOW_RUN_SKIP_FLAGS_DEV === 'true';
     const skipIngestion = allowSkipFlags ? requestedSkipIngestion : false;
     const skipMLInference = allowSkipFlags ? requestedSkipMLInference : false;
     

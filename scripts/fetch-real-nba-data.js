@@ -118,8 +118,10 @@ async function fetchGamesForDate(date) {
       if (!homeTeam || !awayTeam) continue;
       
       // Get scores
-      const homeScore = parseInt(homeTeam.score) || 0;
-      const awayScore = parseInt(awayTeam.score) || 0;
+      const parsedHomeScore = Number.parseInt(homeTeam.score, 10);
+      const parsedAwayScore = Number.parseInt(awayTeam.score, 10);
+      const homeScore = Number.isFinite(parsedHomeScore) ? parsedHomeScore : null;
+      const awayScore = Number.isFinite(parsedAwayScore) ? parsedAwayScore : null;
       const isCompleted = event.status?.type?.completed === true || 
                          event.status?.type?.state === 'post';
       

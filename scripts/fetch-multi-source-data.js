@@ -482,6 +482,7 @@ async function main() {
   const seasons = [];
   let useMock = false;
   let allowSynthetic = false;
+  let allowSyntheticSave = false;
   
   // Parse args
   for (let i = 0; i < args.length; i++) {
@@ -494,6 +495,8 @@ async function main() {
       useMock = true;
     } else if (args[i] === '--allow-synthetic') {
       allowSynthetic = true;
+    } else if (args[i] === '--allow-synthetic-save') {
+      allowSyntheticSave = true;
     }
   }
 
@@ -503,6 +506,10 @@ async function main() {
 
   if (useMock && process.env.NODE_ENV === 'production') {
     throw new Error('Mock data generation is forbidden in production');
+  }
+
+  if (allowSyntheticSave && !useMock) {
+    log('Ignoring --allow-synthetic-save because --use-mock is not enabled', 'warning');
   }
   
   // Default: current season
@@ -585,8 +592,14 @@ async function main() {
   
   let saved = 0;
   let boxScores = 0;
+  let skippedSynthetic = 0;
   
   for (const game of games) {
+    if (game.source === 'REALISTIC_MOCK' && !allowSyntheticSave) {
+      skippedSynthetic++;
+      continue;
+    }
+
     const gameSaved = await saveGame(game);
     if (gameSaved) saved++;
     
@@ -602,6 +615,9 @@ async function main() {
   log('Complete!', 'success');
   log(`Games saved this run: ${saved}`, 'info');
   log(`Box scores saved: ${boxScores}`, 'info');
+  if (skippedSynthetic > 0) {
+    log(`Synthetic games skipped (not saved): ${skippedSynthetic}`, 'warning');
+  }
   log(`Total in database: ${finalGames[0]?.count || 0} games`, 'info');
   log(`Total box scores: ${finalBoxScores[0]?.count || 0}`, 'info');
   

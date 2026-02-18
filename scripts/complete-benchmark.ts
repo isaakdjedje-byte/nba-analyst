@@ -164,6 +164,7 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
 
   // Get games from database
   let games: any[] = [];
+  const allowSyntheticBenchmark = process.argv.includes('--allow-synthetic-benchmark');
   try {
     games = await prisma.$queryRaw`
       SELECT 
@@ -183,12 +184,18 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
       LIMIT ${numGames}
     `;
   } catch (e) {
-    console.log('Database query failed, using sample data...');
+    if (!allowSyntheticBenchmark) {
+      throw new Error(`Database query failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    console.log('Database query failed, falling back to synthetic benchmark samples (explicitly allowed).');
   }
 
-  // If no games found, use sample data
+  // If no games found, use synthetic data only when explicitly enabled
   if (!games || games.length === 0) {
-    console.log('No games found in database. Using sample data...');
+    if (!allowSyntheticBenchmark) {
+      throw new Error('No real games found in database for benchmark. Use --allow-synthetic-benchmark to run synthetic mode.');
+    }
+    console.log('No games found in database. Using synthetic benchmark samples (explicitly allowed).');
     return SAMPLE_GAMES;
   }
 
@@ -244,21 +251,38 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
       AND game_date < ${game.date}::date
     `;
 
-    // Use default odds since we don't have odds table
-    const oddsData = { spread: -5, over_under: 220, ml_home: -150, ml_away: 130 };
-    
-    // Convert American odds to probability
-    const mlHomeProb = oddsData.ml_home > 0 
-      ? 100 / (oddsData.ml_home + 100) 
-      : Math.abs(oddsData.ml_home) / (Math.abs(oddsData.ml_home) + 100);
-    const mlAwayProb = oddsData.ml_away > 0 
-      ? 100 / (oddsData.ml_away + 100) 
-      : Math.abs(oddsData.ml_away) / (Math.abs(oddsData.ml_away) + 100);
+    const homePointsAvg = await prisma.$queryRaw`
+      SELECT AVG(home_score)::float as points_avg
+      FROM games
+      WHERE home_team_name = ${game.home_team}
+      AND season = 2023
+      AND game_date < ${game.date}::date
+      AND home_score IS NOT NULL
+    `;
 
+    const awayPointsAvg = await prisma.$queryRaw`
+      SELECT AVG(away_score)::float as points_avg
+      FROM games
+      WHERE away_team_name = ${game.away_team}
+      AND season = 2023
+      AND game_date < ${game.date}::date
+      AND away_score IS NOT NULL
+    `;
+
+    // Use real-data derived proxies when dedicated odds table is unavailable.
     const hForm = ((homeFormData as any[])[0]?.win_rate) || 0.5;
     const aForm = ((awayFormData as any[])[0]?.win_rate) || 0.5;
     const hWinRate = ((homeWinRate as any[])[0]?.win_rate) || 0.5;
     const aWinRate = ((awayWinRate as any[])[0]?.win_rate) || 0.5;
+    const mlHomeProbDerived = Math.max(0.01, Math.min(0.99, hWinRate));
+    const mlAwayProbDerived = Math.max(0.01, Math.min(0.99, aWinRate));
+    const spreadDerived = Number(((hWinRate - aWinRate) * 10).toFixed(2));
+    const homePoints = Number((homePointsAvg as any[])[0]?.points_avg) || 110;
+    const awayPoints = Number((awayPointsAvg as any[])[0]?.points_avg) || 110;
+    const overUnderDerived = Number((homePoints + awayPoints).toFixed(2));
+
+    const mlHomeProb = mlHomeProbDerived;
+    const mlAwayProb = mlAwayProbDerived;
 
     const eloDiff = 0; // No ELO in database, using heuristic
 
@@ -276,8 +300,8 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
         elo_diff_norm: (eloDiff + 400) / 800,
         home_last10_wins: hForm,
         away_last10_wins: aForm,
-        spread_num: oddsData.spread,
-        over_under: oddsData.over_under,
+        spread_num: spreadDerived,
+        over_under: overUnderDerived,
         ml_home_prob: mlHomeProb,
         ml_away_prob: mlAwayProb,
         rest_days_home: 2,

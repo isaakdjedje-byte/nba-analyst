@@ -108,8 +108,10 @@ export async function withB2BAuth(
   let client: B2BClient | null = null;
   
   const devApiKey = process.env.B2B_DEV_API_KEY;
+  const allowDevApiKeyBypass =
+    process.env.NODE_ENV === 'development' && process.env.B2B_ALLOW_DEV_API_KEY_BYPASS === 'true';
 
-  if (process.env.NODE_ENV === 'development' && devApiKey && apiKey === devApiKey) {
+  if (allowDevApiKeyBypass && devApiKey && apiKey === devApiKey) {
     // Allow test key in development
     client = {
       id: 'dev-client',
