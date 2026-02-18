@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
@@ -10,7 +10,7 @@ interface MFASetupData {
   uri: string;
 }
 
-export default function MFASetupPage() {
+function MFASetupContent() {
   const [setupData, setSetupData] = useState<MFASetupData | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
@@ -229,5 +229,20 @@ export default function MFASetupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MFASetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <MFASetupContent />
+    </Suspense>
   );
 }
