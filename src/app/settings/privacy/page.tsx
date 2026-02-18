@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 // Force dynamic rendering to avoid SSR/prerender issues
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default function PrivacySettingsPage() {
   const session = useSession();
   const sessionData = session?.data;
   const sessionStatus = session?.status;
+  const router = useRouter();
 
   const [exports, setExports] = useState<DataExport[]>([]);
   const [isExporting, setIsExporting] = useState(false);
@@ -37,6 +39,21 @@ export default function PrivacySettingsPage() {
     scheduledFor?: string;
     daysRemaining?: number;
   } | null>(null);
+  const [sessionTimeoutError, setSessionTimeoutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (sessionStatus === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [sessionStatus, router]);
+
+  useEffect(() => {
+    if (sessionStatus !== "loading") return;
+    const timer = setTimeout(() => {
+      setSessionTimeoutError("Session loading timeout. Please refresh and try again.");
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [sessionStatus]);
 
   useEffect(() => {
     if (sessionData?.user) {
@@ -164,6 +181,17 @@ export default function PrivacySettingsPage() {
   };
 
   if (sessionStatus === "loading" || !sessionData) {
+    if (sessionTimeoutError) {
+      return (
+        <div className="flex items-center justify-center min-h-screen p-6">
+          <div className="max-w-lg w-full bg-white border border-red-200 rounded-lg p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-red-700 mb-2">Session Error</h2>
+            <p className="text-gray-700">{sessionTimeoutError}</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

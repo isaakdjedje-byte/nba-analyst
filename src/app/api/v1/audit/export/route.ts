@@ -20,16 +20,24 @@ import { logAuditEvent } from '@/lib/utils/audit';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import type { AuditMetadataResponse } from '@/server/audit/types';
+import { DataSourceFingerprintsSchema } from '@/server/audit/types';
+
+function parseDateParam(value?: string): Date | null {
+  if (!value) return null;
+  const asDate = new Date(value);
+  return Number.isNaN(asDate.getTime()) ? null : asDate;
+}
 
 /**
  * Export parameters schema
  */
 const exportSchema = z.object({
-  fromDate: z.string().datetime().optional(),
-  toDate: z.string().datetime().optional(),
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
   status: z.enum(['PICK', 'NO_BET', 'HARD_STOP']).optional(),
   userId: z.string().optional(),
   source: z.string().optional(),
+  includeSynthetic: z.enum(['true', 'false']).optional().default('false'),
   format: z.enum(['csv', 'json']).default('json'),
 });
 
@@ -77,6 +85,7 @@ export async function GET(request: NextRequest) {
       status: searchParams.get('status'),
       userId: searchParams.get('userId'),
       source: searchParams.get('source'),
+      includeSynthetic: searchParams.get('includeSynthetic') || 'false',
       format: searchParams.get('format') || 'json',
     });
     
@@ -91,18 +100,31 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
     
-    const { fromDate, toDate, status, userId, source, format } = parseResult.data;
+    const { fromDate, toDate, status, userId, source, includeSynthetic, format } = parseResult.data;
+
+    const parsedFromDate = parseDateParam(fromDate);
+    const parsedToDate = parseDateParam(toDate);
+
+    if ((fromDate && !parsedFromDate) || (toDate && !parsedToDate)) {
+      return NextResponse.json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid date format for fromDate or toDate',
+        },
+        meta: { traceId, timestamp },
+      }, { status: 400 });
+    }
     
     // Build where clause
     const where: Prisma.PolicyDecisionWhereInput = {};
     
-    if (fromDate || toDate) {
+    if (parsedFromDate || parsedToDate) {
       where.executedAt = {};
-      if (fromDate) {
-        where.executedAt.gte = new Date(fromDate);
+      if (parsedFromDate) {
+        where.executedAt.gte = parsedFromDate;
       }
-      if (toDate) {
-        where.executedAt.lte = new Date(toDate);
+      if (parsedToDate) {
+        where.executedAt.lte = parsedToDate;
       }
     }
     
@@ -120,6 +142,16 @@ export async function GET(request: NextRequest) {
         path: '$',
         array_contains: [{ sourceName: source }] as unknown as Prisma.JsonArray,
       } as Prisma.JsonFilter;
+    }
+
+    if (includeSynthetic !== 'true') {
+      where.NOT = [
+        {
+          modelVersion: {
+            startsWith: 'season-end-',
+          },
+        },
+      ];
     }
     
     // Get all matching results (no pagination for export)
@@ -147,20 +179,25 @@ export async function GET(request: NextRequest) {
     }, traceId);
     
     // Transform to audit metadata response
-    const data: AuditMetadataResponse[] = results.map((decision) => ({
-      id: decision.id,
-      traceId: decision.traceId,
-      executedAt: decision.executedAt.toISOString(),
-      modelVersion: decision.modelVersion,
-      dataSourceFingerprints:
-        (decision.dataSourceFingerprints || []) as unknown as AuditMetadataResponse['dataSourceFingerprints'],
-      status: decision.status,
-      matchId: decision.matchId,
-      homeTeam: decision.homeTeam,
-      awayTeam: decision.awayTeam,
-      confidence: decision.confidence,
-      rationale: decision.rationale,
-    }));
+    const data: AuditMetadataResponse[] = results.map((decision) => {
+      const parsedFingerprints = DataSourceFingerprintsSchema.safeParse(decision.dataSourceFingerprints || []);
+      const normalizedFingerprints = parsedFingerprints.success ? parsedFingerprints.data : [];
+
+      return {
+        id: decision.id,
+        traceId: decision.traceId,
+        executedAt: decision.executedAt.toISOString(),
+        modelVersion: decision.modelVersion,
+        dataSourceFingerprints:
+          normalizedFingerprints as unknown as AuditMetadataResponse['dataSourceFingerprints'],
+        status: decision.status,
+        matchId: decision.matchId,
+        homeTeam: decision.homeTeam,
+        awayTeam: decision.awayTeam,
+        confidence: decision.confidence,
+        rationale: decision.rationale,
+      };
+    });
     
     // Generate export based on format
     if (format === 'csv') {

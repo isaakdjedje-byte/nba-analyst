@@ -20,10 +20,41 @@ import { authOptions } from '@/server/auth/auth-options';
 import { calculatePerformanceMetrics, isValidDateRange, getDefaultDateRange } from '@/features/performance/services/metrics-service';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
+import { prisma } from '@/server/db/client';
+import { resolvePredictionOutcomes } from '@/server/ml/monitoring/outcome-resolution-service';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
   return `perf-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+async function getAllSeasonsDateRange(): Promise<{ fromDate: string; toDate: string }> {
+  const [minDecision, maxDecision] = await Promise.all([
+    prisma.policyDecision.findFirst({
+      orderBy: { matchDate: 'asc' },
+      select: { matchDate: true },
+    }),
+    prisma.policyDecision.findFirst({
+      orderBy: { matchDate: 'desc' },
+      select: { matchDate: true },
+    }),
+  ]);
+
+  if (minDecision?.matchDate && maxDecision?.matchDate) {
+    return {
+      fromDate: formatLocalDate(minDecision.matchDate),
+      toDate: formatLocalDate(maxDecision.matchDate),
+    };
+  }
+
+  return getDefaultDateRange();
 }
 
 export async function GET(request: NextRequest) {
@@ -110,7 +141,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get date range (defaults to last 30 days)
+    // Get date range
+    // If no explicit filter is provided, default to full historical span (all seasons).
     let dateRange;
     if (fromDateParam && toDateParam) {
       dateRange = {
@@ -118,7 +150,21 @@ export async function GET(request: NextRequest) {
         toDate: toDateParam,
       };
     } else {
-      dateRange = getDefaultDateRange();
+      const allSeasonsRange = await getAllSeasonsDateRange();
+      dateRange = {
+        fromDate: fromDateParam || allSeasonsRange.fromDate,
+        toDate: toDateParam || allSeasonsRange.toDate,
+      };
+    }
+
+    // Resolve outcomes for past predicted games so win-rate reflects real completed matches.
+    // Best-effort: never fail the endpoint if resolution fails.
+    try {
+      await resolvePredictionOutcomes(10000);
+    } catch (resolutionError) {
+      console.warn('[PerformanceMetricsAPI] Outcome resolution skipped:',
+        resolutionError instanceof Error ? resolutionError.message : String(resolutionError)
+      );
     }
 
     // Calculate metrics

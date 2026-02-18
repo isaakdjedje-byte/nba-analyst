@@ -375,6 +375,13 @@ export interface DecisionHistoryQueryParams {
   toDate?: Date;
   status?: DecisionStatus;
   matchId?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  userId?: string;
+  dateField?: 'matchDate' | 'executedAt';
+  sortBy?: 'matchDate' | 'executedAt';
+  sortOrder?: 'asc' | 'desc';
+  includeSynthetic?: boolean;
   page?: number;
   limit?: number;
 }
@@ -395,18 +402,32 @@ export interface DecisionHistoryResult {
 export async function getDecisionHistory(
   params: DecisionHistoryQueryParams
 ): Promise<DecisionHistoryResult> {
-  const { fromDate, toDate, status, matchId, page = 1, limit = 20 } = params;
+  const {
+    fromDate,
+    toDate,
+    status,
+    matchId,
+    homeTeam,
+    awayTeam,
+    userId,
+    dateField = 'matchDate',
+    sortBy = 'matchDate',
+    sortOrder = 'desc',
+    includeSynthetic = false,
+    page = 1,
+    limit = 20,
+  } = params;
   
   // Build where clause
   const where: Prisma.PolicyDecisionWhereInput = {};
   
   if (fromDate || toDate) {
-    where.matchDate = {};
+    where[dateField] = {};
     if (fromDate) {
-      where.matchDate.gte = fromDate;
+      where[dateField].gte = fromDate;
     }
     if (toDate) {
-      where.matchDate.lte = toDate;
+      where[dateField].lte = toDate;
     }
   }
   
@@ -415,7 +436,41 @@ export async function getDecisionHistory(
   }
   
   if (matchId) {
-    where.matchId = matchId;
+    where.matchId = {
+      contains: matchId,
+      mode: 'insensitive',
+    };
+  }
+
+  if (homeTeam) {
+    where.homeTeam = {
+      contains: homeTeam,
+      mode: 'insensitive',
+    };
+  }
+
+  if (awayTeam) {
+    where.awayTeam = {
+      contains: awayTeam,
+      mode: 'insensitive',
+    };
+  }
+
+  if (userId) {
+    where.userId = {
+      contains: userId,
+      mode: 'insensitive',
+    };
+  }
+
+  if (!includeSynthetic) {
+    where.NOT = [
+      {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    ];
   }
 
   // Get total count
@@ -425,7 +480,7 @@ export async function getDecisionHistory(
   const decisions = await prisma.policyDecision.findMany({
     where,
     select: policyDecisionSelect,
-    orderBy: { matchDate: 'desc' },
+    orderBy: { [sortBy]: sortOrder },
     skip: (page - 1) * limit,
     take: limit,
   });

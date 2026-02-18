@@ -1,8 +1,6 @@
 /**
  * The Odds API - Real-time Odds Provider
- * API Key: 8b930b318df066da353304ff5167ad77
- * 
- * Fetches opening and closing lines with line movement detection
+ * Fetches opening and closing lines with line movement detection.
  */
 
 import axios from 'axios';
@@ -68,8 +66,13 @@ export class OddsRealtimeProvider {
 
   constructor(cache: RedisCache) {
     this.cache = cache;
+    const apiKey = process.env.THE_ODDS_API_KEY;
+    if (!apiKey) {
+      throw new Error('THE_ODDS_API_KEY is required for OddsRealtimeProvider');
+    }
+
     this.config = {
-      apiKey: process.env.THE_ODDS_API_KEY || '8b930b318df066da353304ff5167ad77',
+      apiKey,
       baseUrl: 'https://api.the-odds-api.com/v4',
       sport: 'basketball_nba',
       regions: 'us',

@@ -8,6 +8,7 @@ const {
   getRedisClientMock,
   getClientIPMock,
   findManyMock,
+  findFirstMock,
   countMock,
 } = vi.hoisted(() => ({
   getTokenMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   getRedisClientMock: vi.fn(),
   getClientIPMock: vi.fn(),
   findManyMock: vi.fn(),
+  findFirstMock: vi.fn(),
   countMock: vi.fn(),
 }));
 
@@ -40,6 +42,7 @@ vi.mock('@/server/db/client', () => ({
   prisma: {
     policyDecision: {
       findMany: findManyMock,
+      findFirst: findFirstMock,
       count: countMock,
     },
   },
@@ -55,6 +58,7 @@ describe('GET /api/v1/decisions', () => {
     getRedisClientMock.mockReset();
     getClientIPMock.mockReset();
     findManyMock.mockReset();
+    findFirstMock.mockReset();
     countMock.mockReset();
 
     checkRateLimitWithBothMock.mockResolvedValue({
@@ -75,6 +79,9 @@ describe('GET /api/v1/decisions', () => {
     });
     countMock.mockResolvedValue(0);
     findManyMock.mockResolvedValue([]);
+    findFirstMock.mockResolvedValue({
+      matchDate: new Date('2026-01-01T00:00:00.000Z'),
+    });
   });
 
   it('returns 401 when no token is provided', async () => {

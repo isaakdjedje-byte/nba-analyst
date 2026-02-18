@@ -10,6 +10,9 @@
 import { NextResponse } from 'next/server';
 import type { GlobalGuardrailState, GuardrailApiResponse, GuardrailApiError } from '@/features/policy/types';
 import { v4 as uuidv4 } from 'uuid';
+import { getHardStopStatus } from '@/jobs/daily-run-job';
+import { requireOps } from '@/server/auth/server-rbac';
+import { NextRequest } from 'next/server';
 
 /**
  * GET /api/v1/policy/global-status
@@ -24,14 +27,15 @@ import { v4 as uuidv4 } from 'uuid';
  * AC1: Affichage du statut global
  * AC2: Affichage de la cause et action recommandée
  */
-export async function GET(): Promise<NextResponse<GuardrailApiResponse | GuardrailApiError>> {
+export async function GET(request: NextRequest): Promise<NextResponse<GuardrailApiResponse | GuardrailApiError>> {
   const traceId = uuidv4();
   
   try {
-    // TODO: In production, fetch from actual policy engine
-    // For MVP: Return mock data based on current system state
-    // This would typically query the policy service for active constraints
-    
+    const authResult = await requireOps(request);
+    if (authResult.error) {
+      return authResult.error as NextResponse<GuardrailApiResponse | GuardrailApiError>;
+    }
+
     const status: GlobalGuardrailState = await getCurrentGuardrailState();
 
     const response: GuardrailApiResponse = {
@@ -60,18 +64,47 @@ export async function GET(): Promise<NextResponse<GuardrailApiResponse | Guardra
 
 /**
  * Get current guardrail state
- * In production, this would query the policy engine
- * For MVP, returns HEALTHY by default
+ * Uses the persisted hard-stop state and thresholds.
  */
 async function getCurrentGuardrailState(): Promise<GlobalGuardrailState> {
-  // TODO: Integrate with actual policy evaluation
-  // This should query the hard-stop status, warning thresholds, etc.
-  
+  const hardStopStatus = await getHardStopStatus();
+  const now = new Date();
+
+  if (hardStopStatus.isActive) {
+    return {
+      status: 'HARD_STOP',
+      cause: hardStopStatus.triggerReason || 'Hard-stop actif',
+      recommendedAction: hardStopStatus.recommendedAction,
+      updatedAt: now.toISOString(),
+    };
+  }
+
+  const dailyLossRatio = hardStopStatus.limits.dailyLossLimit > 0
+    ? hardStopStatus.currentState.dailyLoss / hardStopStatus.limits.dailyLossLimit
+    : 0;
+  const consecutiveLossRatio = hardStopStatus.limits.consecutiveLosses > 0
+    ? hardStopStatus.currentState.consecutiveLosses / hardStopStatus.limits.consecutiveLosses
+    : 0;
+  const bankrollRatio = hardStopStatus.limits.bankrollPercent > 0
+    ? hardStopStatus.currentState.bankrollPercent / hardStopStatus.limits.bankrollPercent
+    : 0;
+
+  const riskRatio = Math.max(dailyLossRatio, consecutiveLossRatio, bankrollRatio);
+  if (riskRatio >= 0.8) {
+    return {
+      status: 'WARNING',
+      cause: 'Les limites de risque se rapprochent du seuil de blocage',
+      recommendedAction: hardStopStatus.recommendedAction,
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
+    };
+  }
+
   return {
     status: 'HEALTHY',
     cause: 'Tous les indicateurs sont dans les limites acceptables',
     recommendedAction: 'Vous pouvez consulter les recommandations normalement',
-    updatedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
   };
 }

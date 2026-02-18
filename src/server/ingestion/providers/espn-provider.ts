@@ -26,9 +26,35 @@ export interface ESPNNewsFilter {
 
 export class ESPNProvider extends BaseProvider {
   private readonly apiVersion = 'v1';
+  private readonly eastTeams = new Set([
+    'ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DET', 'IND', 'MIA', 'MIL',
+    'NYK', 'ORL', 'PHI', 'TOR', 'WAS',
+  ]);
 
   constructor(config: ProviderConfig) {
     super(config);
+  }
+
+  private formatDateForESPN(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}${month}${day}`;
+  }
+
+  private normalizeAbbreviation(value: unknown): string {
+    const raw = typeof value === 'string' ? value.trim().toUpperCase() : '';
+    if (raw.length >= 3) {
+      return raw.slice(0, 3);
+    }
+    if (raw.length > 0) {
+      return raw.padEnd(3, 'X');
+    }
+    return 'UNK';
+  }
+
+  private getConferenceFromAbbr(abbr: string): 'East' | 'West' {
+    return this.eastTeams.has(abbr) ? 'East' : 'West';
   }
 
   /**
@@ -36,10 +62,12 @@ export class ESPNProvider extends BaseProvider {
    */
   async getScoreboard(date?: string): Promise<DataSourceResult<Game[]>> {
     const traceId = this.generateTraceId();
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const dateQuery = date
+      ? date.replace(/-/g, '')
+      : `${this.formatDateForESPN(new Date())}-${this.formatDateForESPN(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))}`;
 
     try {
-      const endpoint = `/sports/basketball/nba/events?dates=${targetDate.replace(/-/g, '')}`;
+      const endpoint = `/basketball/nba/scoreboard?dates=${dateQuery}&limit=1000`;
       const { data, latency } = await this.makeRequest<unknown>(endpoint);
 
       const context: ValidationContext = {
@@ -77,17 +105,7 @@ export class ESPNProvider extends BaseProvider {
       };
     } catch (error) {
       this.logError('getScoreboard', error, traceId);
-      // C6: Return empty result instead of throwing to allow fallback
-      console.warn(`[${traceId}] ESPN API failed, returning empty result for fallback`);
-      return {
-        data: [],
-        metadata: {
-          source: this.config.name,
-          timestamp: new Date(),
-          traceId,
-          latency: 0,
-        },
-      };
+      throw new Error(`[${traceId}] ESPN getScoreboard failed`);
     }
   }
 
@@ -98,7 +116,7 @@ export class ESPNProvider extends BaseProvider {
     const traceId = this.generateTraceId();
 
     try {
-      const endpoint = '/sports/basketball/nba/teams';
+      const endpoint = '/basketball/nba/teams';
       const { data, latency } = await this.makeRequest<unknown>(endpoint);
 
       const context: ValidationContext = {
@@ -146,7 +164,7 @@ export class ESPNProvider extends BaseProvider {
       const params = new URLSearchParams();
       if (filter.limit) params.set('limit', filter.limit.toString());
       
-      const endpoint = `/sports/basketball/nba/news?${params.toString()}`;
+      const endpoint = `/basketball/nba/news?${params.toString()}`;
       const { data, latency } = await this.makeRequest<unknown[]>(endpoint);
 
       return {
@@ -209,6 +227,9 @@ export class ESPNProvider extends BaseProvider {
     const homeScore = homeCompetitor?.score ? parseInt(homeCompetitor.score as string, 10) : undefined;
     const awayScore = awayCompetitor?.score ? parseInt(awayCompetitor.score as string, 10) : undefined;
 
+    const homeAbbr = this.normalizeAbbreviation(homeTeam.abbreviation);
+    const awayAbbr = this.normalizeAbbreviation(awayTeam.abbreviation);
+
     return {
       id: parseInt(e.id as string, 10) || 0,
       season: new Date().getFullYear(),
@@ -219,18 +240,18 @@ export class ESPNProvider extends BaseProvider {
         id: parseInt(homeTeam.id as string, 10) || 0,
         name: (homeTeam.name as string) || '',
         city: (homeTeam.location as string) || '',
-        abbreviation: (homeTeam.abbreviation as string) || '',
-        conference: 'East', // ESPN doesn't provide conference in basic API
-        division: '',
-      } : undefined,
+          abbreviation: homeAbbr,
+          conference: this.getConferenceFromAbbr(homeAbbr),
+          division: '',
+        } : undefined,
       awayTeam: awayTeam ? {
         id: parseInt(awayTeam.id as string, 10) || 0,
         name: (awayTeam.name as string) || '',
         city: (awayTeam.location as string) || '',
-        abbreviation: (awayTeam.abbreviation as string) || '',
-        conference: 'East',
-        division: '',
-      } : undefined,
+          abbreviation: awayAbbr,
+          conference: this.getConferenceFromAbbr(awayAbbr),
+          division: '',
+        } : undefined,
       homeScore,
       awayScore,
     };
@@ -247,12 +268,14 @@ export class ESPNProvider extends BaseProvider {
       
       return teams.map((t: unknown) => {
         const team = (t as Record<string, unknown>).team as Record<string, unknown>;
+        const abbr = this.normalizeAbbreviation(team.abbreviation);
+
         return {
           id: parseInt(team.id as string, 10) || 0,
           name: (team.name as string) || '',
           city: (team.location as string) || '',
-          abbreviation: (team.abbreviation as string) || '',
-          conference: 'East', // Default, ESPN requires separate call for conference
+          abbreviation: abbr,
+          conference: this.getConferenceFromAbbr(abbr),
           division: '',
         };
       });

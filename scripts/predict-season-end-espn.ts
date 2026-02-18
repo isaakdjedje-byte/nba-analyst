@@ -8,6 +8,7 @@
 
 import { PrismaClient, RunStatus, DecisionStatus, PredictionStatus } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
+import { hash } from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -262,10 +263,11 @@ async function savePredictions(
   });
   
   if (!systemUser) {
+    const servicePasswordHash = await hash(`system-${uuidv4()}`, 10);
     systemUser = await prisma.user.create({
       data: {
         email: 'system@nba-analyst.local',
-        password: 'system',
+        password: servicePasswordHash,
         role: 'admin',
       },
     });

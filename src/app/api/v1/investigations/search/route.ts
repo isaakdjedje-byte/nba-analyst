@@ -24,7 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
-import { getDecisionHistory, type DecisionHistoryResult } from '@/server/db/repositories/policy-decisions-repository';
+import { getDecisionHistory } from '@/server/db/repositories/policy-decisions-repository';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
 import type { DecisionStatus, PolicyDecisionWithRelations } from '@/server/db/repositories/policy-decisions-repository';
@@ -34,6 +34,7 @@ import type {
   InvestigationResult 
 } from '@/features/investigation/types';
 import { v4 as uuidv4 } from 'uuid';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -87,24 +88,11 @@ function transformToInvestigationResult(decision: PolicyDecisionWithRelations): 
       hardStop: decision.hardStopGate,
     },
     hardStopReason: decision.hardStopReason,
-    recommendedPick: decision.recommendedPick,
-    // ML output would come from ML service in a real implementation
-    // Generate dynamic factors based on decision properties
-    mlOutput: decision.confidence ? {
-      confidence: decision.confidence,
-      dominantFactors: decision.edge && decision.edge > 0.6 
-        ? ['historical_performance', 'home_advantage', 'rest_days', 'edge_bet_opportunity']
-        : decision.driftGate
-          ? ['historical_performance', 'home_advantage', 'data_drift_detected']
-          : ['historical_performance', 'home_advantage', 'rest_days'],
-    } : undefined,
-    // Data quality signals based on decision properties
-    dataQuality: [
-      { signal: 'odds_data_completeness', isAnomaly: !decision.publishedAt },
-      { signal: 'prediction_data_age', isAnomaly: false },
-      ...(decision.edge && decision.edge < 0.3 ? [{ signal: 'low_edge_confidence', isAnomaly: true }] : []),
-      ...(decision.driftGate ? [{ signal: 'data_drift_detected', isAnomaly: true }] : []),
-    ],
+    recommendedPick: formatRecommendedPick(
+      decision.recommendedPick,
+      decision.homeTeam,
+      decision.awayTeam
+    ),
   };
 }
 
@@ -258,47 +246,39 @@ export async function GET(request: NextRequest) {
       status: status as DecisionStatus | 'all',
     };
 
-    // Get decisions from the database (reuse logs service logic)
-    // In a real implementation, this would be a dedicated investigation query
+    // Get decisions from the database with all filters applied at query time
     const dbStatus = status === 'all' ? undefined : status as DecisionStatus;
     const dbFromDate = fromDate ? new Date(fromDate) : undefined;
     const dbToDate = toDate ? new Date(toDate) : undefined;
-    const decisions: DecisionHistoryResult = await getDecisionHistory({
+
+    if (dbFromDate) {
+      dbFromDate.setHours(0, 0, 0, 0);
+    }
+
+    if (dbToDate) {
+      dbToDate.setHours(23, 59, 59, 999);
+    }
+
+    const decisions = await getDecisionHistory({
       fromDate: dbFromDate,
       toDate: dbToDate,
       status: dbStatus,
+      matchId: matchId || undefined,
+      homeTeam: homeTeam || undefined,
+      awayTeam: awayTeam || undefined,
+      userId: userId || undefined,
+      dateField: 'executedAt',
+      sortBy: 'executedAt',
+      sortOrder: 'desc',
       page,
       limit,
     });
 
-    // Apply additional filters (matchId, homeTeam, awayTeam, userId)
-    let filteredDecisions = decisions.decisions;
-    
-    if (matchId) {
-      filteredDecisions = filteredDecisions.filter(d => d.matchId.includes(matchId));
-    }
-    if (homeTeam) {
-      filteredDecisions = filteredDecisions.filter(d => 
-        d.homeTeam.toLowerCase().includes(homeTeam.toLowerCase())
-      );
-    }
-    if (awayTeam) {
-      filteredDecisions = filteredDecisions.filter(d => 
-        d.awayTeam.toLowerCase().includes(awayTeam.toLowerCase())
-      );
-    }
-    // FR23: Filter by user who received the decision
-    if (userId) {
-      filteredDecisions = filteredDecisions.filter(d => 
-        d.userId.toLowerCase().includes(userId.toLowerCase())
-      );
-    }
-
     // Transform to investigation results
-    const results: InvestigationResult[] = filteredDecisions.map(decision => transformToInvestigationResult(decision)).filter(Boolean) as InvestigationResult[];
+    const results: InvestigationResult[] = decisions.decisions.map(decision => transformToInvestigationResult(decision)).filter(Boolean) as InvestigationResult[];
 
     // Calculate pagination
-    const total = results.length;
+    const total = decisions.total;
     const totalPages = Math.ceil(total / limit);
 
     // Build response

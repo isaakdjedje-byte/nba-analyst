@@ -9,6 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPolicyDecisionById, getPolicyDecisionByTraceId } from '@/server/db/repositories';
+import { requireAuth } from '@/server/auth/server-rbac';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -23,6 +25,11 @@ export async function GET(
   const timestamp = new Date().toISOString();
 
   try {
+    const authResult = await requireAuth();
+    if (authResult.error) {
+      return authResult.error;
+    }
+
     const { id } = await params;
     
     // Check if id is a traceId (starts with 'hist-' or similar pattern)
@@ -64,7 +71,11 @@ export async function GET(
         homeTeam: decision.homeTeam,
         awayTeam: decision.awayTeam,
         status: decision.status,
-        recommendedPick: decision.recommendedPick,
+        recommendedPick: formatRecommendedPick(
+          decision.recommendedPick,
+          decision.homeTeam,
+          decision.awayTeam
+        ),
         rationale: decision.rationale,
         confidence: decision.confidence,
         edge: decision.edge,

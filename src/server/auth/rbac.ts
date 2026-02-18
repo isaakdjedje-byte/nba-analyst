@@ -75,7 +75,7 @@ export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   "/api/health": [],
   "/dashboard": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/dashboard/picks": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
-  "/dashboard/no-bet": [],
+  "/dashboard/no-bet": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/dashboard/performance": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/dashboard/logs": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/dashboard/investigation": [UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
@@ -83,6 +83,7 @@ export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   "/api/v1/decisions": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/api/v1/policy": [UserRole.OPS, UserRole.ADMIN],
   "/api/v1/runs": [UserRole.OPS, UserRole.ADMIN],
+  "/api/ingestion": [UserRole.OPS, UserRole.ADMIN],
 
   // Admin only routes
   "/admin": [UserRole.ADMIN],

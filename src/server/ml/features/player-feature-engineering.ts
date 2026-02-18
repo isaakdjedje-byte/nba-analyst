@@ -83,26 +83,32 @@ export class PlayerFeatureEngineeringService {
     const keyPlayersOutDiff = homeRosterFeatures.keyPlayersOut - awayRosterFeatures.keyPlayersOut;
 
     // Calculate star form difference
-    const homeStarForm = keyPlayerFeatures.homeStarPlayers.reduce((sum, p) => sum + p.recentForm, 0) / 
-                        (keyPlayerFeatures.homeStarPlayers.length || 1);
-    const awayStarForm = keyPlayerFeatures.awayStarPlayers.reduce((sum, p) => sum + p.recentForm, 0) / 
-                        (keyPlayerFeatures.awayStarPlayers.length || 1);
+    const homeStarForm = keyPlayerFeatures.homeStarPlayers.length > 0
+      ? keyPlayerFeatures.homeStarPlayers.reduce((sum, p) => sum + p.recentForm, 0) / keyPlayerFeatures.homeStarPlayers.length
+      : Math.min(1, Math.max(0, homeRosterFeatures.top3PlayersAvgPoints / 90));
+    const awayStarForm = keyPlayerFeatures.awayStarPlayers.length > 0
+      ? keyPlayerFeatures.awayStarPlayers.reduce((sum, p) => sum + p.recentForm, 0) / keyPlayerFeatures.awayStarPlayers.length
+      : Math.min(1, Math.max(0, awayRosterFeatures.top3PlayersAvgPoints / 90));
     const starFormDiff = homeStarForm - awayStarForm;
 
+    const homeRosterStrength = this.calculateRosterStrength(homeRosterFeatures);
+    const awayRosterStrength = this.calculateRosterStrength(awayRosterFeatures);
+
+    const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
     return {
-      // Placeholder for existing features (would come from base feature engineering)
-      homeWinPct: 0.5,
-      awayWinPct: 0.5,
-      homePointsAvg: 110,
-      awayPointsAvg: 110,
-      homeRecentForm: 0,
-      awayRecentForm: 0,
+      homeWinPct: homeRosterStrength,
+      awayWinPct: awayRosterStrength,
+      homePointsAvg: homeRosterFeatures.top3PlayersAvgPoints,
+      awayPointsAvg: awayRosterFeatures.top3PlayersAvgPoints,
+      homeRecentForm: clamp(homeStarForm, -1, 1),
+      awayRecentForm: clamp(awayStarForm, -1, 1),
       h2hHomeWins: 0,
       h2hTotalGames: 0,
 
       // NEW: Player-level features
-      homeRosterStrength: this.calculateRosterStrength(homeRosterFeatures),
-      awayRosterStrength: this.calculateRosterStrength(awayRosterFeatures),
+      homeRosterStrength,
+      awayRosterStrength,
       rosterStrengthDiff,
 
       homeTop3AvgPoints: homeRosterFeatures.top3PlayersAvgPoints,
@@ -208,15 +214,15 @@ export class PlayerFeatureEngineeringService {
     homeTop3PlayersAvgPoints: number,
     awayTop3PlayersAvgPoints: number
   ): Promise<KeyPlayerFeatures> {
-    void homeTop3PlayersAvgPoints;
-    void awayTop3PlayersAvgPoints;
-    // This would match star players by position
-    // For now, return placeholder data
+    const homeForm = Math.min(1, Math.max(0, homeTop3PlayersAvgPoints / 90));
+    const awayForm = Math.min(1, Math.max(0, awayTop3PlayersAvgPoints / 90));
+    const matchupAdvantage = this.normalizeDiff(homeTop3PlayersAvgPoints, awayTop3PlayersAvgPoints);
+
     return {
       homeStarPlayers: [],
       awayStarPlayers: [],
-      starMatchupAdvantage: 0,
-      clutchPerformance: 0,
+      starMatchupAdvantage: matchupAdvantage,
+      clutchPerformance: (homeForm - awayForm) * 0.5,
     };
   }
 

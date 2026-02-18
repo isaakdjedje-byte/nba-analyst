@@ -20,12 +20,14 @@ describe('B2B base helpers', () => {
   const originalEnv = {
     nodeEnv: process.env.NODE_ENV,
     devApiKey: process.env.B2B_DEV_API_KEY,
+    allowDevBypass: process.env.B2B_ALLOW_DEV_API_KEY_BYPASS,
   };
 
   beforeEach(() => {
     authenticateB2BApiKeyMock.mockReset();
     vi.stubEnv('NODE_ENV', originalEnv.nodeEnv ?? 'test');
     vi.stubEnv('B2B_DEV_API_KEY', originalEnv.devApiKey ?? '');
+    vi.stubEnv('B2B_ALLOW_DEV_API_KEY_BYPASS', originalEnv.allowDevBypass ?? '');
   });
 
   afterEach(() => {
@@ -137,6 +139,7 @@ describe('B2B base helpers', () => {
   it('withB2BAuth allows configured dev api key only in development', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     vi.stubEnv('B2B_DEV_API_KEY', 'dev-key');
+    vi.stubEnv('B2B_ALLOW_DEV_API_KEY_BYPASS', 'true');
 
     const request = new NextRequest('http://localhost:3000/api/v1/b2b/decisions', {
       headers: { 'x-api-key': 'dev-key' },

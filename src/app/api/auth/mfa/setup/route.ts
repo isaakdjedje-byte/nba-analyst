@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     // Complete MFA setup
     const result = await setupMFAForUser(
       session.user.id,
-      session.user.email,
+      setupSession.secret,
       code
     );
 

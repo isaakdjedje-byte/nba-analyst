@@ -39,6 +39,11 @@ interface TrainingExample {
   label: number;
 }
 
+type BinaryPrediction = {
+  prob: number;
+  actual: number;
+};
+
 function getOrInit(state: Map<string, TeamState>, team: string): TeamState {
   if (!state.has(team)) {
     state.set(team, {
@@ -66,6 +71,72 @@ function daysBetween(current: Date, previous?: Date): number {
   const ms = current.getTime() - previous.getTime();
   const days = Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
   return Math.min(days, 7);
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+function calculateAUC(predictions: BinaryPrediction[]): number {
+  if (predictions.length === 0) return 0.5;
+
+  const rows = predictions
+    .filter((p) => (p.actual === 0 || p.actual === 1) && Number.isFinite(p.prob))
+    .map((p) => ({ prob: clamp01(p.prob), actual: p.actual }));
+
+  const positives = rows.filter((p) => p.actual === 1).length;
+  const negatives = rows.filter((p) => p.actual === 0).length;
+  if (positives === 0 || negatives === 0) return 0.5;
+
+  const sorted = [...rows].sort((a, b) => a.prob - b.prob);
+  let rank = 1;
+  let sumPositiveRanks = 0;
+
+  for (let i = 0; i < sorted.length;) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1].prob === sorted[i].prob) {
+      j++;
+    }
+
+    const avgRank = (rank + (rank + (j - i))) / 2;
+    for (let k = i; k <= j; k++) {
+      if (sorted[k].actual === 1) {
+        sumPositiveRanks += avgRank;
+      }
+    }
+
+    rank += j - i + 1;
+    i = j + 1;
+  }
+
+  const auc = (sumPositiveRanks - (positives * (positives + 1)) / 2) / (positives * negatives);
+  return clamp01(auc);
+}
+
+function calculateCalibrationError(predictions: BinaryPrediction[]): number {
+  if (predictions.length === 0) return 0;
+  const numBins = 10;
+  const bins = new Array(numBins).fill(0).map(() => ({ count: 0, sumProb: 0, sumActual: 0 }));
+
+  for (const p of predictions) {
+    if (!Number.isFinite(p.prob) || (p.actual !== 0 && p.actual !== 1)) continue;
+    const prob = clamp01(p.prob);
+    const idx = Math.min(Math.floor(prob * numBins), numBins - 1);
+    bins[idx].count++;
+    bins[idx].sumProb += prob;
+    bins[idx].sumActual += p.actual;
+  }
+
+  let ece = 0;
+  for (const bin of bins) {
+    if (bin.count === 0) continue;
+    const avgProb = bin.sumProb / bin.count;
+    const avgActual = bin.sumActual / bin.count;
+    ece += (bin.count / predictions.length) * Math.abs(avgProb - avgActual);
+  }
+
+  return Math.max(0, ece);
 }
 
 async function buildExamples(limit: number): Promise<TrainingExample[]> {
@@ -200,11 +271,15 @@ async function main() {
   let correct = 0;
   const preds: number[] = [];
   const actuals: number[] = [];
+  const scoredPredictions: BinaryPrediction[] = [];
 
   for (const row of testData) {
-    const pred = model.predict(row.features).predictedWinner === 'HOME' ? 1 : 0;
+    const inference = model.predict(row.features);
+    const pred = inference.predictedWinner === 'HOME' ? 1 : 0;
+    const prob = clamp01(inference.homeWinProbability);
     preds.push(pred);
     actuals.push(row.label);
+    scoredPredictions.push({ prob, actual: row.label });
     if (pred === row.label) correct += 1;
   }
 
@@ -215,6 +290,8 @@ async function main() {
   const precision = tp / (tp + fp) || 0;
   const recall = tp / (tp + fn) || 0;
   const f1 = (2 * precision * recall) / (precision + recall) || 0;
+  const auc = calculateAUC(scoredPredictions);
+  const calibrationError = calculateCalibrationError(scoredPredictions);
 
   console.log('='.repeat(70));
   console.log('XGBOOST TEST METRICS');
@@ -223,6 +300,8 @@ async function main() {
   console.log(`Precision: ${(precision * 100).toFixed(2)}%`);
   console.log(`Recall:    ${(recall * 100).toFixed(2)}%`);
   console.log(`F1 Score:  ${(f1 * 100).toFixed(2)}%`);
+  console.log(`AUC-ROC:   ${auc.toFixed(4)}`);
+  console.log(`ECE:       ${calibrationError.toFixed(4)}`);
   console.log(`Train time: ${trainMs}ms`);
   console.log(`Iterations: ${trainResult.iterations}`);
   console.log();
@@ -241,8 +320,8 @@ async function main() {
       recall,
       f1Score: f1,
       logLoss: trainResult.valLosses[trainResult.valLosses.length - 1] || trainResult.trainLosses[trainResult.trainLosses.length - 1] || 0,
-      auc: 0.0,
-      calibrationError: 0.0,
+      auc,
+      calibrationError,
       weightsHash: `xgb-${Date.now()}`,
       isActive: false,
       weights: model.getState() as any,

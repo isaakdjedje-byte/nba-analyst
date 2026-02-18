@@ -4,6 +4,7 @@
  */
 
 import { notFound } from 'next/navigation';
+import { getPolicyDecisionById, getPolicyDecisionByTraceId } from '@/server/db/repositories';
 
 interface DecisionDetailPageProps {
   params: Promise<{
@@ -14,31 +15,37 @@ interface DecisionDetailPageProps {
 export default async function DecisionDetailPage({ params }: DecisionDetailPageProps) {
   const { id } = await params;
 
-  // In a real app, fetch decision from API/database
-  // For now, return notFound for most IDs to simulate missing decisions
-  if (!id || id === 'invalid-id-123') {
+  if (!id) {
+    notFound();
+  }
+
+  const decision = id.startsWith('trace-') || id.startsWith('hist-') || id.startsWith('run-')
+    ? await getPolicyDecisionByTraceId(id)
+    : await getPolicyDecisionById(id);
+
+  if (!decision) {
     notFound();
   }
 
   return (
     <main data-testid="decision-detail-page">
       <h1>Decision Detail</h1>
-      <div data-testid="decision-id">{id}</div>
+      <div data-testid="decision-id">{decision.id}</div>
       <div data-testid="pick-detail-modal">
         <h2>Pick Details</h2>
         <div data-testid="pick-rationale">
-          <p>This is a sample rationale for the pick.</p>
+          <p>{decision.rationale}</p>
         </div>
         <div data-testid="pick-confidence">
-          <span>Confidence: 85%</span>
+          <span>Confidence: {(decision.confidence * 100).toFixed(1)}%</span>
         </div>
-        <div data-testid="hard-stop-banner" style={{ display: 'none' }}>
+        <div data-testid="hard-stop-banner" style={{ display: decision.status === 'HARD_STOP' ? 'block' : 'none' }}>
           <p>Critical policy violation detected</p>
         </div>
         <div data-testid="hard-stop-message">
-          <p>Decision details</p>
+          <p>{decision.hardStopReason || 'Decision details'}</p>
         </div>
-        <button data-testid="publish-button" disabled={false}>
+        <button data-testid="publish-button" disabled={decision.status === 'HARD_STOP'}>
           Publish
         </button>
       </div>

@@ -149,22 +149,18 @@ export async function verifyUserMFAToken(
  */
 export async function setupMFAForUser(
   userId: string,
-  email: string,
+  encryptedSetupSecret: string,
   verificationCode: string
 ): Promise<{
   success: boolean;
   backupCodes?: string[];
   error?: string;
 }> {
-  // Generate MFA secret
-  const { generateMFASecret, encryptMFASecret, generateBackupCodes } =
-    await import("./mfa");
-
-  const { secret } = await generateMFASecret(email);
+  const { generateBackupCodes } = await import("./mfa");
 
   // Verify the code before saving
   const { verifyTOTP } = await import("./mfa");
-  const isValid = await verifyTOTP(encryptMFASecret(secret), verificationCode);
+  const isValid = await verifyTOTP(encryptedSetupSecret, verificationCode);
 
   if (!isValid) {
     return { success: false, error: "Invalid verification code" };
@@ -180,7 +176,7 @@ export async function setupMFAForUser(
   await prisma.user.update({
     where: { id: userId },
     data: {
-      mfaSecret: encryptMFASecret(secret),
+      mfaSecret: encryptedSetupSecret,
       mfaEnabled: true,
       mfaBackupCodes: JSON.stringify(hashedCodes),
       mfaEnrolledAt: new Date(),

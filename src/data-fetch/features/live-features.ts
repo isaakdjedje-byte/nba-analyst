@@ -31,8 +31,8 @@ interface LiveFeatures {
   homeRestDays: number;
   awayRestDays: number;
   restDaysDiff: number;
-  homeTravelDistance: number;
-  awayTravelDistance: number;
+  homeTravelDistance: number | null;
+  awayTravelDistance: number | null;
   
   // Lineup confirmation
   lineupsConfirmed: boolean;
@@ -106,12 +106,16 @@ export class LiveFeatureEngineering {
     ]);
 
     // Calculate rest days
-    const homeRest = this.calculateRestDays(homeTeam, gameDate);
-    const awayRest = this.calculateRestDays(awayTeam, gameDate);
+    const [homeRest, awayRest] = await Promise.all([
+      this.calculateRestDays(homeTeam, gameDate),
+      this.calculateRestDays(awayTeam, gameDate),
+    ]);
 
     // Calculate travel distance
-    const homeTravel = this.calculateTravelDistance(homeTeam, gameDate);
-    const awayTravel = this.calculateTravelDistance(awayTeam, gameDate);
+    const [homeTravel, awayTravel] = await Promise.all([
+      this.calculateTravelDistance(homeTeam, gameDate),
+      this.calculateTravelDistance(awayTeam, gameDate),
+    ]);
 
     // Build feature set
     const features: LiveFeatures = {
@@ -185,48 +189,53 @@ export class LiveFeatureEngineering {
     gameDate: Date
   ): Promise<HistoricalContext | null> {
     try {
-      // Query DuckDB for recent performance
-      const homeQuery = `
-        SELECT 
-          AVG(CASE WHEN winner = '${homeTeam}' THEN 1.0 ELSE 0.0 END) as win_pct_5
-        FROM (
-          SELECT winner
-          FROM raw_games
-          WHERE (home_team = '${homeTeam}' OR away_team = '${homeTeam}')
-            AND date < '${gameDate.toISOString().split('T')[0]}'
-          ORDER BY date DESC
-          LIMIT 5
-        )
-      `;
+      const dateBoundary = gameDate.toISOString().split('T')[0];
+      const fetchWinPct = async (team: string, limit: number): Promise<number> => {
+        const query = `
+          SELECT AVG(CASE WHEN winner = '${team}' THEN 1.0 ELSE 0.0 END) as win_pct
+          FROM (
+            SELECT winner
+            FROM raw_games
+            WHERE (home_team = '${team}' OR away_team = '${team}')
+              AND date < '${dateBoundary}'
+            ORDER BY date DESC
+            LIMIT ${limit}
+          )
+        `;
+        const rows = await this.duckdb.query(query).catch(() => [{ win_pct: null }]);
+        const value = rows[0]?.win_pct;
+        return typeof value === 'number' && Number.isFinite(value) ? value : 0.5;
+      };
 
-      const awayQuery = `
-        SELECT 
-          AVG(CASE WHEN winner = '${awayTeam}' THEN 1.0 ELSE 0.0 END) as win_pct_5
-        FROM (
-          SELECT winner
-          FROM raw_games
-          WHERE (home_team = '${awayTeam}' OR away_team = '${awayTeam}')
-            AND date < '${gameDate.toISOString().split('T')[0]}'
-          ORDER BY date DESC
-          LIMIT 5
-        )
-      `;
-
-      const [homeResult, awayResult] = await Promise.all([
-        this.duckdb.query(homeQuery).catch(() => [{ win_pct_5: 0.5 }]),
-        this.duckdb.query(awayQuery).catch(() => [{ win_pct_5: 0.5 }]),
+      const [
+        homeWinPct5,
+        homeWinPct10,
+        homeWinPct20,
+        awayWinPct5,
+        awayWinPct10,
+        awayWinPct20,
+      ] = await Promise.all([
+        fetchWinPct(homeTeam, 5),
+        fetchWinPct(homeTeam, 10),
+        fetchWinPct(homeTeam, 20),
+        fetchWinPct(awayTeam, 5),
+        fetchWinPct(awayTeam, 10),
+        fetchWinPct(awayTeam, 20),
       ]);
 
+      const homeElo = 1300 + (homeWinPct20 * 400);
+      const awayElo = 1300 + (awayWinPct20 * 400);
+
       return {
-        homeWinPct5: Number(homeResult[0]?.win_pct_5 || 0.5),
-        homeWinPct10: Number(homeResult[0]?.win_pct_5 || 0.5),
-        homeWinPct20: Number(homeResult[0]?.win_pct_5 || 0.5),
-        awayWinPct5: Number(awayResult[0]?.win_pct_5 || 0.5),
-        awayWinPct10: Number(awayResult[0]?.win_pct_5 || 0.5),
-        awayWinPct20: Number(awayResult[0]?.win_pct_5 || 0.5),
-        homeElo: 1500,
-        awayElo: 1500,
-        eloDiff: 0,
+        homeWinPct5,
+        homeWinPct10,
+        homeWinPct20,
+        awayWinPct5,
+        awayWinPct10,
+        awayWinPct20,
+        homeElo,
+        awayElo,
+        eloDiff: homeElo - awayElo,
       };
     } catch (error) {
       console.warn('Failed to fetch historical context:', error);
@@ -237,23 +246,34 @@ export class LiveFeatureEngineering {
   /**
    * Calculate rest days for a team
    */
-  private calculateRestDays(team: string, gameDate: Date): number {
-    void team;
-    void gameDate;
-    // This would query the last game played by the team
-    // For now, return a default value
-    return 2; // Default 2 days rest
+  private async calculateRestDays(team: string, gameDate: Date): Promise<number> {
+    const dateBoundary = gameDate.toISOString().split('T')[0];
+    const query = `
+      SELECT date
+      FROM raw_games
+      WHERE (home_team = '${team}' OR away_team = '${team}')
+        AND date < '${dateBoundary}'
+      ORDER BY date DESC
+      LIMIT 1
+    `;
+
+    const rows = await this.duckdb.query(query).catch(() => []);
+    const lastGameDate = rows[0]?.date;
+    if (!lastGameDate) return 0;
+
+    const last = new Date(lastGameDate);
+    const diffMs = gameDate.getTime() - last.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    return Math.max(0, Math.floor(diffMs / dayMs));
   }
 
   /**
    * Calculate travel distance
    */
-  private calculateTravelDistance(team: string, gameDate: Date): number {
+  private async calculateTravelDistance(team: string, gameDate: Date): Promise<number | null> {
     void team;
     void gameDate;
-    // This would calculate distance from previous game location
-    // For now, return a default value
-    return 0; // Home game
+    return null;
   }
 
   /**
@@ -276,13 +296,11 @@ export class LiveFeatureEngineering {
    * Calculate win probability from historical context
    */
   private calculateWinProbability(context: HistoricalContext): number {
-    // Simple model based on win % and home advantage
-    const homeAdvantage = 0.6; // Home teams win ~60% in NBA
-    const winPct = context.homeWinPct5;
+    const boundedWinPct = Math.min(0.99, Math.max(0.01, context.homeWinPct5));
     const eloAdvantage = context.eloDiff / 400;
     
     // Logistic function for probability
-    const logit = Math.log(winPct / (1 - winPct)) + eloAdvantage + Math.log(homeAdvantage / (1 - homeAdvantage));
+    const logit = Math.log(boundedWinPct / (1 - boundedWinPct)) + eloAdvantage;
     return 1 / (1 + Math.exp(-logit));
   }
 

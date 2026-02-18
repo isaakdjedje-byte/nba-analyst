@@ -11,14 +11,6 @@
 import { useState } from 'react';
 import { GuardrailBanner } from './GuardrailBanner';
 import { useGuardrailStatus } from '../hooks/useGuardrailStatus';
-import type { GuardrailStatus } from '../types';
-
-interface GuardrailBannerWrapperProps {
-  /** Use mock data for development/testing */
-  useMock?: boolean;
-  /** Initial mock status (for testing different states) */
-  initialMockStatus?: GuardrailStatus;
-}
 
 /**
  * Wrapper component that fetches guardrail status and renders the banner
@@ -34,19 +26,12 @@ interface GuardrailBannerWrapperProps {
  * // In layout or page
  * <GuardrailBannerWrapper />
  * 
- * // With mock data for testing
- * <GuardrailBannerWrapper useMock initialMockStatus="WARNING" />
  * ```
  */
-export function GuardrailBannerWrapper({
-  useMock = false,
-  initialMockStatus = 'HEALTHY',
-}: GuardrailBannerWrapperProps) {
+export function GuardrailBannerWrapper() {
   const [isDismissed, setIsDismissed] = useState(false);
   
   const { status, isLoading } = useGuardrailStatus({
-    useMock,
-    initialMockStatus,
     refetchOnFocus: true,
   });
 

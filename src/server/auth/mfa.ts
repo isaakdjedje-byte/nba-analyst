@@ -27,6 +27,32 @@ if (MFA_ENCRYPTION_KEY.length < 32) {
 const ENCRYPTION_KEY_BUFFER = Buffer.from(MFA_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'));
 
 /**
+ * Convert bytes to RFC 4648 base32 (no padding).
+ */
+function toBase32(input: Buffer): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  let output = "";
+
+  for (const byte of input) {
+    value = (value << 8) | byte;
+    bits += 8;
+
+    while (bits >= 5) {
+      output += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+
+  if (bits > 0) {
+    output += alphabet[(value << (5 - bits)) & 31];
+  }
+
+  return output;
+}
+
+/**
  * Generate a new MFA secret for a user
  * Returns the secret, QR code data URL, and otpauth URI
  */
@@ -35,8 +61,8 @@ export async function generateMFASecret(userEmail: string): Promise<{
   qrCodeUrl: string;
   uri: string;
 }> {
-  // Generate a random 20-byte secret (base32 encoded for TOTP)
-  const secret = randomBytes(20).toString("base64url");
+  // Generate a random 20-byte secret encoded as base32 for TOTP compatibility.
+  const secret = toBase32(randomBytes(20));
 
   // Create otpauth URI for authenticator apps
   const encodedEmail = encodeURIComponent(userEmail);

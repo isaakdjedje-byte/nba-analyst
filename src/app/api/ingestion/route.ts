@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/server/auth/auth-options';
 import { createIngestionService } from '@/server/ingestion';
+
+function isOpsOrAdmin(role: string | null | undefined): boolean {
+  return role === 'ops' || role === 'admin';
+}
 
 /**
  * POST /api/ingestion
@@ -10,6 +16,24 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
   try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
+    if (!session?.user || !isOpsOrAdmin(role)) {
+      return NextResponse.json(
+        {
+          error: 'Forbidden',
+          message: 'Ops/Admin access required',
+          traceId,
+        },
+        {
+          status: 403,
+          headers: {
+            'X-Trace-Id': traceId,
+          },
+        }
+      );
+    }
+
     const body = await request.json();
     const { provider, all = false } = body;
 
@@ -96,6 +120,24 @@ export async function GET() {
   const traceId = `ingestion-api-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
   try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
+    if (!session?.user || !isOpsOrAdmin(role)) {
+      return NextResponse.json(
+        {
+          error: 'Forbidden',
+          message: 'Ops/Admin access required',
+          traceId,
+        },
+        {
+          status: 403,
+          headers: {
+            'X-Trace-Id': traceId,
+          },
+        }
+      );
+    }
+
     const service = createIngestionService();
     const health = await service.getHealthStatus();
     

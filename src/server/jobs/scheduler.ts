@@ -13,6 +13,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '@/server/db/client';
 import { executeDailyRunPipeline } from './daily-run-orchestrator';
+import { runContinuousLearningCycle } from '@/server/ml/automation/continuous-learning-service';
 
 export interface SchedulerConfig {
   /** Cron expression for scheduling (e.g., "0 10 * * *" for 10:00 UTC daily) */
@@ -152,6 +153,24 @@ export async function triggerDailyRun(options: TriggerOptions = {}): Promise<Tri
     });
     
     console.log(`[Scheduler] Run ${runId} completed in ${duration}ms with status: ${result.status}`);
+
+    // Daily feedback loop: resolve outcomes, monitor drift/health, optional guarded retraining.
+    // This never fails the daily run itself.
+    try {
+      const learning = await runContinuousLearningCycle();
+      console.log('[Scheduler] Continuous learning cycle summary:', {
+        runId,
+        feedbackExecuted: learning.feedbackExecuted,
+        outcomeResolution: learning.outcomeResolution,
+        weeklyResolvedCount: learning.weeklyMetrics.resolvedCount,
+        weeklyAccuracy: learning.weeklyMetrics.accuracy,
+        retraining: learning.retraining,
+      });
+    } catch (learningError) {
+      console.error('[Scheduler] Continuous learning cycle failed:',
+        learningError instanceof Error ? learningError.message : String(learningError)
+      );
+    }
     
     return {
       success: result.status === 'completed',

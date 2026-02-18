@@ -7,9 +7,10 @@
  * Story 2.6: Provides hard-stop status for operations monitoring.
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getHardStopStatus } from '@/jobs/daily-run-job';
 import { v4 as uuidv4 } from 'uuid';
+import { requireOps } from '@/server/auth/server-rbac';
 
 /**
  * GET /api/v1/policy/hardstop/status
@@ -22,8 +23,13 @@ import { v4 as uuidv4 } from 'uuid';
  * - limits: Configured thresholds
  * - recommendedAction: What to do to resolve the hard-stop
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireOps(request);
+    if (authResult.error) {
+      return authResult.error;
+    }
+
     const status = await getHardStopStatus();
     const traceId = uuidv4();
 

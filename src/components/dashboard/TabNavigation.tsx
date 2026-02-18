@@ -15,20 +15,29 @@ interface Tab {
   testId: string;
 }
 
-const TABS: Tab[] = [
+const BASE_TABS: Tab[] = [
   { label: 'Picks', href: '/dashboard/picks', testId: 'nav-tab-picks' },
   { label: 'No-Bet', href: '/dashboard/no-bet', testId: 'nav-tab-no-bet' },
   { label: 'Performance', href: '/dashboard/performance', testId: 'nav-tab-performance' },
   { label: 'Logs', href: '/dashboard/logs', testId: 'nav-tab-logs' },
 ];
 
-export function TabNavigation() {
+const ADMIN_TABS: Tab[] = [
+  { label: 'ML Monitor', href: '/admin/ml', testId: 'nav-tab-ml-monitor' },
+];
+
+interface TabNavigationProps {
+  role?: string;
+}
+
+export function TabNavigation({ role }: TabNavigationProps) {
   const pathname = usePathname();
+  const tabs = role === 'admin' || role === 'ops' ? [...BASE_TABS, ...ADMIN_TABS] : BASE_TABS;
 
   // Determine active tab based on current pathname
   const getActiveTab = (): string => {
-    const activeTab = TABS.find((tab) => pathname?.startsWith(tab.href));
-    return activeTab?.href || TABS[0].href;
+    const activeTab = tabs.find((tab) => pathname?.startsWith(tab.href));
+    return activeTab?.href || tabs[0].href;
   };
 
   const activeTab = getActiveTab();
@@ -41,7 +50,7 @@ export function TabNavigation() {
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex space-x-8" role="tablist">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const isActive = activeTab === tab.href;
             return (
               <Link

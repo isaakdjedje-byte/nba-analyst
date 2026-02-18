@@ -31,12 +31,25 @@ async function main() {
 
     if (dailyRun) {
       console.log('🔄 Daily run already exists, resetting status...');
+
+      await prisma.policyDecision.deleteMany({
+        where: { runId: dailyRun.id },
+      });
+
+      await prisma.prediction.deleteMany({
+        where: { runId: dailyRun.id },
+      });
+
       dailyRun = await prisma.dailyRun.update({
         where: { id: dailyRun.id },
         data: {
           status: RunStatus.PENDING,
           startedAt: null,
           completedAt: null,
+          predictionsCount: 0,
+          picksCount: 0,
+          noBetCount: 0,
+          hardStopCount: 0,
           errors: null,
         },
       });
@@ -75,6 +88,21 @@ async function main() {
         },
       });
       console.log('   ✓ Hard-Stop initialized\n');
+    } else if (existingHardStop.isActive) {
+      console.log('🧹 Resetting active Hard-Stop state for manual run...');
+      await prisma.hardStopState.update({
+        where: { id: existingHardStop.id },
+        data: {
+          isActive: false,
+          dailyLoss: 0,
+          consecutiveLosses: 0,
+          bankrollPercent: 0,
+          triggeredAt: null,
+          triggerReason: null,
+          lastResetAt: new Date(),
+        },
+      });
+      console.log('   ✓ Hard-Stop reset\n');
     }
 
     // 3. Execute the pipeline
@@ -136,7 +164,7 @@ async function main() {
         console.log(`   Status: ${decision.status}`);
         console.log(`   Match Date: ${decision.matchDate.toISOString().split('T')[0]}`);
         console.log(`   Confidence: ${(decision.confidence * 100).toFixed(1)}%`);
-        console.log(`   Edge: ${decision.edge?.toFixed(1) || 'N/A'}%`);
+        console.log(`   Edge: ${decision.edge !== null ? (decision.edge * 100).toFixed(1) : 'N/A'}%`);
         console.log(`   Pick: ${decision.recommendedPick || 'N/A'}`);
         console.log(`   Gates: confidence=${decision.confidenceGate} edge=${decision.edgeGate} drift=${decision.driftGate} hardstop=${decision.hardStopGate}`);
         console.log(`   Rationale: ${decision.rationale.substring(0, 100)}${decision.rationale.length > 100 ? '...' : ''}`);

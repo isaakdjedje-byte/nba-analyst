@@ -10,11 +10,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   fetchPolicyConfig,
+  fetchAdaptivePolicyReport,
   updatePolicyConfig,
   transformConfigToParameters,
   validateParameter,
 } from '../services/policy-config-service';
 import type {
+  AdaptivePolicyReportResponse,
   PolicyParameter,
   PolicyUpdateRequest,
   PolicyConfigState,
@@ -26,6 +28,7 @@ interface UsePolicyConfigReturn {
   parameters: PolicyParameter[];
   error: string | null;
   lastSaved: Date | null;
+  adaptiveReport: AdaptivePolicyReportResponse['data'] | null;
   
   // Actions
   refresh: () => Promise<void>;
@@ -44,6 +47,7 @@ interface UsePolicyConfigReturn {
   // Loading states
   isLoading: boolean;
   isUpdating: boolean;
+  isAdaptiveLoading: boolean;
 }
 
 export function usePolicyConfig(): UsePolicyConfigReturn {
@@ -52,20 +56,32 @@ export function usePolicyConfig(): UsePolicyConfigReturn {
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [adaptiveReport, setAdaptiveReport] = useState<AdaptivePolicyReportResponse['data'] | null>(null);
+  const [isAdaptiveLoading, setIsAdaptiveLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     setState('loading');
     setError(null);
+    setIsAdaptiveLoading(true);
 
     try {
-      const response = await fetchPolicyConfig();
+      const [configResponse, adaptiveResponse] = await Promise.all([
+        fetchPolicyConfig(),
+        fetchAdaptivePolicyReport().catch(() => null),
+      ]);
+
+      const response = configResponse;
       const params = transformConfigToParameters(response.config);
       setParameters(params);
+      setAdaptiveReport(adaptiveResponse?.data ?? null);
       setState('success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erreur lors du chargement de la configuration';
       setError(message);
+      setAdaptiveReport(null);
       setState('error');
+    } finally {
+      setIsAdaptiveLoading(false);
     }
   }, []);
 
@@ -135,11 +151,13 @@ export function usePolicyConfig(): UsePolicyConfigReturn {
     parameters,
     error,
     lastSaved,
+    adaptiveReport,
     refresh,
     updateParameter,
     validateValue,
     isLoading: state === 'loading',
     isUpdating,
+    isAdaptiveLoading,
   };
 }
 

@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
 import { withB2BAuth, requireScope, createErrorResponse } from '../_base';
 import { validateDecisionsQuery } from '../schemas';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 /**
  * Transform database decision to API response format
@@ -64,7 +65,11 @@ function transformDecision(decision: {
     metadata: {
       confidence: decision.confidence,
       edge: decision.edge,
-      recommendedPick: decision.recommendedPick,
+      recommendedPick: formatRecommendedPick(
+        decision.recommendedPick,
+        decision.homeTeam,
+        decision.awayTeam
+      ),
       processedAt: decision.createdAt.toISOString(),
     },
     createdAt: decision.createdAt.toISOString(),
@@ -103,6 +108,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Build where clause
     const where: Record<string, unknown> = {};
+    const includeSynthetic = searchParams.get('includeSynthetic') === 'true';
     
     // Date filter
     if (query.fromDate || query.toDate) {
@@ -131,6 +137,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Match ID filter
     if (query.matchId) {
       where.matchId = query.matchId;
+    }
+
+    if (!includeSynthetic) {
+      where.NOT = {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      };
     }
 
     // Calculate pagination

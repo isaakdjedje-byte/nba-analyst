@@ -15,19 +15,25 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { DecisionCard } from './DecisionCard';
 import { DecisionListSkeleton } from './DecisionCardSkeleton';
-import { useTodayDecisions, DecisionError } from '../hooks/useDecisions';
+import { useTodayDecisions, useDecisionsByStatus, DecisionError } from '../hooks/useDecisions';
 import { EmptyPicksState, DegradedStateBanner, BlockedState } from '@/components/ui';
 import type { Decision, DecisionStatus } from '../types';
 
 interface DecisionListProps {
   initialData?: Decision[];
+  filterStatuses?: DecisionStatus[];
+  selectedDate?: string;
 }
 
 // AC6: Hauteur estimée d'une carte sur mobile
 const ESTIMATED_ITEM_SIZE = 140;
 
-export function DecisionList({ initialData }: DecisionListProps) {
-  const { data, isLoading, error, refetch } = useTodayDecisions();
+export function DecisionList({ initialData, filterStatuses, selectedDate }: DecisionListProps) {
+  const singleStatus = filterStatuses && filterStatuses.length === 1 ? filterStatuses[0] : null;
+  const singleStatusQuery = useDecisionsByStatus(singleStatus ?? 'PICK', Boolean(singleStatus), selectedDate);
+  const allStatusesQuery = useTodayDecisions(!singleStatus, selectedDate);
+  const queryResult = singleStatus ? singleStatusQuery : allStatusesQuery;
+  const { data, isLoading, error, refetch } = queryResult;
   const handleDecisionClick = useCallback(() => {}, []);
 
   // Log errors with traceId for debugging (AC6)
@@ -48,8 +54,14 @@ export function DecisionList({ initialData }: DecisionListProps) {
     }
   }, [error, data, isLoading]);
 
-  // Use initial data if provided (Server Component hydration)
-  const decisions = data?.data || initialData || [];
+  // Use initial data when query returns an empty array to avoid blank client overwrite
+  const fetchedDecisions = data?.data;
+  const baseDecisions = fetchedDecisions && fetchedDecisions.length > 0
+    ? fetchedDecisions
+    : (initialData ?? fetchedDecisions ?? []);
+  const decisions = filterStatuses && filterStatuses.length > 0
+    ? baseDecisions.filter((decision) => filterStatuses.includes(decision.status))
+    : baseDecisions;
   const meta = data?.meta;
 
   // AC3: Degraded state check

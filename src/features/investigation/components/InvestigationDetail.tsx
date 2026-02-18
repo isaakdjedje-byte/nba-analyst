@@ -497,6 +497,8 @@ Investigateur: ${'Support User'}
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
               })}
             </p>
           </div>
@@ -529,22 +531,22 @@ Investigateur: ${'Support User'}
             <GateEvaluation
               gateName="Confiance"
               passed={decision.gates?.confidence ?? false}
-              threshold="≥ 0.7"
+              threshold="≥ 0.65"
               actual={decision.confidence ? `${Math.round(decision.confidence * 100)}%` : undefined}
               recommendation={decision.gates?.confidence ? 'Pass' : 'Fail'}
             />
             <GateEvaluation
               gateName="Edge"
               passed={decision.gates?.edge ?? false}
-              threshold="≥ 0.5"
+              threshold="≥ 0.05"
               actual={decision.edge ? `${Math.round(decision.edge * 100)}%` : undefined}
               recommendation={decision.gates?.edge ? 'Pass' : 'Fail'}
             />
             <GateEvaluation
               gateName="Drift"
               passed={decision.gates?.drift ?? true}
-              threshold="< 0.3"
-              recommendation={decision.gates?.drift ? 'Fail' : 'Pass'}
+              threshold="< 0.15"
+              recommendation={decision.gates?.drift ? 'Pass' : 'Fail'}
             />
             <GateEvaluation
               gateName="Hard-Stop"

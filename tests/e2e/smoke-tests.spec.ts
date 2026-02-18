@@ -16,8 +16,8 @@ test.describe('Smoke Tests @smoke @critical @epic1', () => {
     await page.goto(baseUrl);
 
     // Then the page should load successfully
-    // App may redirect from root to default dashboard route.
-    await expect(page).toHaveURL(/\/$|\/dashboard\/picks$/);
+    // App now requires auth - redirects to login when unauthenticated
+    await expect(page).toHaveURL(/\/$|\/login$/);
     await expect(page.locator('body')).toBeVisible();
   });
 

@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Shield, RefreshCw, AlertCircle, Clock, History } from 'lucide-react';
+import { Shield, RefreshCw, AlertCircle, Clock, History, TrendingUp } from 'lucide-react';
 import { usePolicyConfig } from '../hooks/usePolicyConfig';
 import { PolicyParameterInput } from '../components/PolicyParameterInput';
 import { PolicyVersionHistory } from './PolicyVersionHistory';
@@ -122,11 +122,13 @@ export function PolicyConfigPage({ userRole = 'user' }: PolicyConfigPageProps) {
     parameters,
     error,
     lastSaved,
+    adaptiveReport,
     refresh,
     updateParameter,
     validateValue,
     isLoading,
     isUpdating,
+    isAdaptiveLoading,
   } = usePolicyConfig();
 
   // State for version history panel
@@ -261,6 +263,61 @@ export function PolicyConfigPage({ userRole = 'user' }: PolicyConfigPageProps) {
           </div>
         </div>
       )}
+
+      {/* Adaptive threshold transparency */}
+      <section
+        aria-labelledby="adaptive-thresholds-heading"
+        className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 id="adaptive-thresholds-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-blue-600" aria-hidden="true" />
+              Calibration adaptive des seuils
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Recommandations calculées automatiquement sur les résultats résolus récents.
+            </p>
+          </div>
+          {isAdaptiveLoading && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">Chargement...</span>
+          )}
+        </div>
+
+        {adaptiveReport ? (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="rounded-md bg-gray-50 dark:bg-gray-800 p-3">
+              <p className="text-gray-500 dark:text-gray-400">Seuils actifs</p>
+              <p className="font-medium text-gray-900 dark:text-gray-100">
+                Confiance {adaptiveReport.current.confidenceMinThreshold.toFixed(2)} - Edge {adaptiveReport.current.edgeMinThreshold.toFixed(2)}
+              </p>
+            </div>
+            <div className="rounded-md bg-gray-50 dark:bg-gray-800 p-3">
+              <p className="text-gray-500 dark:text-gray-400">Recommandation ({adaptiveReport.lookbackDays} jours)</p>
+              <p className="font-medium text-gray-900 dark:text-gray-100">
+                {adaptiveReport.recommendation.applied && adaptiveReport.recommendation.overrides
+                  ? `Confiance ${adaptiveReport.recommendation.overrides.confidence.minThreshold.toFixed(2)} - Edge ${adaptiveReport.recommendation.overrides.edge.minThreshold.toFixed(2)}`
+                  : `Non appliquable (${adaptiveReport.recommendation.reason || 'no_candidate'})`}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Samples: {adaptiveReport.recommendation.sampleSize}, selections: {adaptiveReport.recommendation.selectedCount}, precision: {(adaptiveReport.recommendation.precision * 100).toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-md bg-gray-50 dark:bg-gray-800 p-3 md:col-span-2">
+              <p className="text-gray-500 dark:text-gray-400">Dernier snapshot adaptatif</p>
+              <p className="font-medium text-gray-900 dark:text-gray-100">
+                {adaptiveReport.latestAppliedSnapshot
+                  ? `v${adaptiveReport.latestAppliedSnapshot.version} - ${new Date(adaptiveReport.latestAppliedSnapshot.createdAt).toLocaleString('fr-FR')} - ${adaptiveReport.latestAppliedSnapshot.createdBy}`
+                  : 'Aucun snapshot adaptatif persisté'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+            Rapport adaptatif indisponible.
+          </p>
+        )}
+      </section>
 
       {/* Parameters by category */}
       {categories.map((category) => {

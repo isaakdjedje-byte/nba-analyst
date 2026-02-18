@@ -31,7 +31,7 @@ const PredictionInputSchema = z.object({
 });
 
 const RunContextSchema = z.object({
-  runId: z.string().min(1, 'Run ID is required'),
+  runId: z.string().min(1, 'Run ID is required').optional(),
   traceId: z.string().optional(),
   dailyLoss: z.number().min(0).optional().default(0),
   consecutiveLosses: z.number().min(0).optional().default(0),
@@ -111,9 +111,11 @@ export async function POST(request: NextRequest) {
 
     const { prediction, context } = validationResult.data;
 
+    const resolvedRunId = context.runId ?? prediction.runId;
+
     // Create run context with traceId
     const runContext: RunContext = {
-      runId: context.runId,
+      runId: resolvedRunId,
       traceId: context.traceId || traceId,
       dailyLoss: context.dailyLoss,
       consecutiveLosses: context.consecutiveLosses,

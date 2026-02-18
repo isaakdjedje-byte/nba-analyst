@@ -59,7 +59,7 @@ async function processDecisionRetention(): Promise<{
     orderBy: { publishedAt: 'asc' },
   });
 
-  let archived = 0;
+  const archived = 0;
   let deleted = 0;
   let errors = 0;
 
@@ -73,36 +73,26 @@ async function processDecisionRetention(): Promise<{
 
       switch (action) {
         case 'archive':
-          // Mark decision as archived (soft delete)
-          // FR29: Archive to cold storage before deletion
-          // For now, we add an archived flag and log to audit
-          await prisma.policyDecision.update({
-            where: { id: decision.id },
-            data: { 
-              // TODO: Add 'archivedAt' field to schema for proper archival tracking
-              // For now, we log the archival action to preserve evidence
-            },
-          });
-          
-          // Log archival to audit trail BEFORE archival (FR29)
+          // Archive persistence is not implemented in schema yet.
+          // Record an explicit archival request event to avoid false "archived" reporting.
           await prisma.auditLog.create({
             data: {
               actorId: 'system',
-              action: 'DECISION_ARCHIVED',
+              action: 'DECISION_ARCHIVE_REQUESTED',
               targetId: decision.id,
               targetType: 'POLICY_DECISION',
               metadata: JSON.stringify({
                 reason: 'retention_policy',
                 traceId: decision.traceId,
-                archivedAt: new Date().toISOString(),
+                requestedAt: new Date().toISOString(),
+                state: 'pending_implementation',
                 retentionPolicy: 'archiveAfterDays',
               }),
               traceId: `cleanup-${decision.traceId}`,
             },
           });
-          
-          archived++;
-          log('INFO', 'Decision archived', { 
+
+          log('WARN', 'Decision archival requested but not persisted (schema support missing)', {
             decisionId: decision.id, 
             traceId: decision.traceId,
             publishedAt: decision.publishedAt,

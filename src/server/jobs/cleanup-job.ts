@@ -7,8 +7,9 @@
 import { prisma } from '@/server/db/client';
 import { logAuditEvent } from '@/lib/utils/audit';
 import { permanentlyDeleteUser, getAccountsReadyForDeletion } from '@/server/rgpd/account-deletion';
-import { unlink } from 'fs/promises';
+import { readdir, stat, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
+import { dirname, extname, join, resolve } from 'path';
 
 export interface CleanupResult {
   deletedAccounts: number;
@@ -173,7 +174,7 @@ async function cleanupOldAuditLogs(): Promise<number> {
  * Clean up orphaned export files (files in exports dir not in DB)
  */
 async function cleanupOrphanedExports(): Promise<number> {
-  const cleanedCount = 0;
+  let cleanedCount = 0;
 
   try {
     // Get all valid export file paths from DB
@@ -182,11 +183,42 @@ async function cleanupOrphanedExports(): Promise<number> {
       select: { filePath: true },
     });
 
-    void validExports;
+    const validPaths = new Set(
+      validExports
+        .map((entry) => entry.filePath)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .map((value) => resolve(value))
+    );
 
-    // Note: In a real implementation, we'd scan the directory
-    // For now, this is a placeholder for the cleanup logic
-    // Implementation would use fs.readdir() to list files
+    const candidateDirs = new Set<string>();
+    for (const path of validPaths) {
+      candidateDirs.add(dirname(path));
+    }
+
+    // Fallback exports directory for legacy files.
+    candidateDirs.add(resolve(process.cwd(), 'exports'));
+
+    const allowedExtensions = new Set(['.csv', '.json', '.zip']);
+
+    for (const dir of candidateDirs) {
+      if (!existsSync(dir)) continue;
+
+      const entries = await readdir(dir);
+      for (const entry of entries) {
+        const fullPath = resolve(join(dir, entry));
+        const fileInfo = await stat(fullPath);
+        if (!fileInfo.isFile()) continue;
+
+        if (!allowedExtensions.has(extname(entry).toLowerCase())) {
+          continue;
+        }
+
+        if (!validPaths.has(fullPath)) {
+          await unlink(fullPath);
+          cleanedCount++;
+        }
+      }
+    }
 
     return cleanedCount;
   } catch (error) {
