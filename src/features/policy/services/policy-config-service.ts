@@ -11,6 +11,7 @@ import type {
   PolicyUpdateResponse,
   PolicyConfigError,
   AuditHistoryResponse,
+  AdaptivePolicyReportResponse,
 } from '../types/config';
 
 const API_BASE = '/api/v1/policy';
@@ -82,6 +83,27 @@ export async function fetchPolicyAuditHistory(
   if (!response.ok) {
     const error: PolicyConfigError = await response.json();
     throw new Error(error.error?.message || 'Failed to fetch audit history');
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch adaptive threshold report
+ */
+export async function fetchAdaptivePolicyReport(
+  lookbackDays: number = 120
+): Promise<AdaptivePolicyReportResponse> {
+  const response = await fetch(`${API_BASE}/config/adaptive?lookbackDays=${lookbackDays}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error: PolicyConfigError = await response.json();
+    throw new Error(error.error?.message || 'Failed to fetch adaptive policy report');
   }
 
   return response.json();

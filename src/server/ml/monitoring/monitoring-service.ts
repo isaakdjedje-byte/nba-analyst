@@ -142,31 +142,18 @@ export class MonitoringService {
     confidence: number;
     latencyMs: number;
   }): Promise<void> {
-    await prisma.$executeRaw`
-      INSERT INTO prediction_logs (
-        id,
-        prediction_id,
-        model_version,
-        algorithm,
-        features,
-        predicted_probability,
-        predicted_winner,
-        confidence,
-        latency_ms,
-        created_at
-      ) VALUES (
-        ${`log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`},
-        ${prediction.predictionId},
-        ${prediction.modelVersion},
-        ${prediction.algorithm},
-        ${JSON.stringify(prediction.features)},
-        ${prediction.predictedProbability},
-        ${prediction.predictedWinner},
-        ${prediction.confidence},
-        ${prediction.latencyMs},
-        NOW()
-      )
-    `;
+    await prisma.predictionLog.create({
+      data: {
+        predictionId: prediction.predictionId,
+        modelVersion: prediction.modelVersion,
+        algorithm: prediction.algorithm,
+        features: prediction.features,
+        predictedProbability: prediction.predictedProbability,
+        predictedWinner: prediction.predictedWinner,
+        confidence: prediction.confidence,
+        latencyMs: prediction.latencyMs,
+      },
+    });
   }
 
   /**
@@ -178,16 +165,22 @@ export class MonitoringService {
     homeScore: number,
     awayScore: number
   ): Promise<void> {
-    await prisma.$executeRaw`
-      UPDATE prediction_logs
-      SET 
-        actual_winner = ${actualWinner},
-        home_score = ${homeScore},
-        away_score = ${awayScore},
-        resolved_at = NOW(),
-        correct = (predicted_winner = ${actualWinner})
-      WHERE prediction_id = ${predictionId}
-    `;
+    const existing = await prisma.predictionLog.findFirst({
+      where: { predictionId },
+      orderBy: { createdAt: 'desc' },
+      select: { predictedWinner: true },
+    });
+
+    await prisma.predictionLog.updateMany({
+      where: { predictionId },
+      data: {
+        actualWinner,
+        homeScore,
+        awayScore,
+        resolvedAt: new Date(),
+        correct: existing ? existing.predictedWinner === actualWinner : null,
+      },
+    });
   }
 
   /**

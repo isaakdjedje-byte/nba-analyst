@@ -33,6 +33,7 @@ export async function calculatePerformanceMetrics(
   if (dateRange?.fromDate && dateRange?.toDate) {
     fromDate = new Date(dateRange.fromDate);
     toDate = new Date(dateRange.toDate);
+    fromDate.setHours(0, 0, 0, 0);
     // Set to end of day
     toDate.setHours(23, 59, 59, 999);
   } else {
@@ -71,43 +72,76 @@ export async function calculatePerformanceMetrics(
  * @returns PerformanceMetrics
  */
 async function fetchMetricsFromDB(fromDate: Date, toDate: Date): Promise<PerformanceMetrics> {
-  // Query policy decisions within date range
-  const decisions = await prisma.policyDecision.findMany({
-    where: {
-      matchDate: {
-        gte: fromDate,
-        lte: toDate,
-      },
-      publishedAt: {
-        not: null, // Only published decisions count
+  const where = {
+    executedAt: {
+      gte: fromDate,
+      lte: toDate,
+    },
+    NOT: {
+      modelVersion: {
+        startsWith: 'season-end-',
       },
     },
+  };
+
+  const [totalDecisions, groupedByStatus] = await Promise.all([
+    prisma.policyDecision.count({ where }),
+    prisma.policyDecision.groupBy({
+      by: ['status'],
+      where,
+      _count: {
+        status: true,
+      },
+    }),
+  ]);
+
+  const picksCount = groupedByStatus.find((g) => g.status === 'PICK')?._count.status ?? 0;
+  const noBetCount = groupedByStatus.find((g) => g.status === 'NO_BET')?._count.status ?? 0;
+  const hardStopCount = groupedByStatus.find((g) => g.status === 'HARD_STOP')?._count.status ?? 0;
+
+  const pickedPredictionIds = await prisma.policyDecision.findMany({
+    where: {
+      ...where,
+      status: 'PICK',
+    },
     select: {
-      id: true,
-      status: true,
-      confidence: true,
-      homeTeam: true,
-      awayTeam: true,
-      recommendedPick: true,
+      predictionId: true,
     },
   });
 
-  const totalDecisions = decisions.length;
-  
-  // Count decisions by status
-  const picksCount = decisions.filter(d => d.status === 'PICK').length;
-  const noBetCount = decisions.filter(d => d.status === 'NO_BET').length;
-  const hardStopCount = decisions.filter(d => d.status === 'HARD_STOP').length;
+  const predictionIds = pickedPredictionIds.map((row) => row.predictionId);
 
-  // Calculate accuracy rate
-  // For simplicity, accuracy = picks / total decisions
-  // In a real system, this would need actual game outcomes
-  const accuracyRate = totalDecisions > 0 
-    ? Math.round((picksCount / totalDecisions) * 100 * 10) / 10 
-    : 0;
+  const [resolvedPicksCount, wonPicksCount] = predictionIds.length > 0
+    ? await Promise.all([
+        prisma.predictionLog.count({
+          where: {
+            predictionId: { in: predictionIds },
+            resolvedAt: { not: null },
+          },
+        }),
+        prisma.predictionLog.count({
+          where: {
+            predictionId: { in: predictionIds },
+            correct: true,
+          },
+        }),
+      ])
+    : [0, 0];
+
+  const pendingPicksCount = Math.max(picksCount - resolvedPicksCount, 0);
+  const pickWinRate = resolvedPicksCount > 0
+    ? Math.round((wonPicksCount / resolvedPicksCount) * 1000) / 10
+    : null;
+
+  // Keep existing response field for backward compatibility.
+  const accuracyRate = pickWinRate ?? 0;
 
   return {
     accuracyRate,
+    pickWinRate,
+    resolvedPicksCount,
+    wonPicksCount,
+    pendingPicksCount,
     picksCount,
     noBetCount,
     hardStopCount,

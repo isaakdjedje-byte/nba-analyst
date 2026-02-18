@@ -106,7 +106,10 @@ export default async function PicksPage() {
 
         {/* Decision List with Suspense - AC6: Virtual scrolling for > 20 items */}
         <Suspense fallback={<DecisionListSkeleton count={6} />}>
-          <DecisionList initialData={initialDecisions || undefined} />
+          <DecisionList
+            initialData={initialDecisions || undefined}
+            filterStatuses={['PICK']}
+          />
         </Suspense>
       </div>
     </div>

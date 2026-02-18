@@ -12,7 +12,7 @@
 import { prisma } from '@/server/db/client';
 import { PolicyEngine, DEFAULT_POLICY_CONFIG } from '@/server/policy/engine';
 import { HardStopTracker, createHardStopTracker } from '@/server/policy/hardstop-tracker';
-import { RunContext } from '@/server/policy/types';
+import { PolicyConfig, RunContext } from '@/server/policy/types';
 import { sendAlert, createHardStopAlert } from '@/server/ingestion/alerting';
 import { v4 as uuidv4 } from 'uuid';
 import { Logger } from 'pino';
@@ -56,6 +56,9 @@ export interface DailyRunJobConfig {
   
   // Story 4.5: Data source fingerprints for audit metadata
   dataSourceFingerprints?: DataSourceFingerprints;
+
+  // Optional runtime threshold overrides (adaptive calibration)
+  policyConfigOverrides?: Partial<Pick<PolicyConfig, 'confidence' | 'edge' | 'drift'>>;
 }
 
 export interface DailyRunJobResult {
@@ -276,6 +279,7 @@ export async function processDailyRun(
   
   // Initialize policy engine
   const policyEngine = PolicyEngine.create({
+    ...config.policyConfigOverrides,
     hardStops: hardStopConfig,
   });
   
@@ -461,16 +465,11 @@ export async function processDailyRun(
         await sendAlert({ enabled: true, console: true }, alert);
       }
       
-      // Update tracker state based on decision
-      // Track stake as exposure for PICK decisions - this is used for daily loss calculation
-      // In production, this would come from user betting preferences
-      // When game results are known, this should be updated with actual loss amount
+      // Update tracker state based on decision.
+      // IMPORTANT: dailyLoss must reflect realized PnL only (after outcomes),
+      // not stake exposure at decision time.
       if (result.status === 'PICK') {
-        const stakeAmount = config.defaultStakeAmount ?? 100; // Default €100 stake
-        await tracker.updateDailyLoss(stakeAmount);
-        
-        // Also update consecutive losses tracking (assuming outcome unknown = pending)
-        // This should be updated when game results are resolved
+        // Outcome is unknown at decision time; only mark pending pick state.
         await tracker.updateAfterDecision('PICK', undefined, config.currentBankroll);
       } else if (result.status === 'NO_BET') {
         await tracker.updateAfterDecision('NO_BET', undefined, config.currentBankroll);

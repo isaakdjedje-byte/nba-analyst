@@ -70,14 +70,12 @@ export function useDecisions(options: UseDecisionsOptions = {}) {
  * Hook to fetch decisions with today's date as default
  */
 export function useTodayDecisions(enabled = true) {
-  const today = new Date().toISOString().split('T')[0];
-  return useDecisions({ date: today, enabled });
+  return useDecisions({ enabled });
 }
 
 /**
  * Hook to fetch decisions by status
  */
 export function useDecisionsByStatus(status: string, enabled = true) {
-  const today = new Date().toISOString().split('T')[0];
-  return useDecisions({ date: today, status, enabled });
+  return useDecisions({ status, enabled });
 }

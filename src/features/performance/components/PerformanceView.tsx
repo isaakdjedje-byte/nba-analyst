@@ -19,11 +19,11 @@ import type { PerformanceMetrics } from '../types';
 // Skeleton component for loading state
 function PerformanceMetricsSkeleton() {
   return (
-    <div 
-      className="grid grid-cols-2 lg:grid-cols-4 gap-4"
-      data-testid="performance-metrics-skeleton"
-    >
-      {[...Array(4)].map((_, i) => (
+      <div 
+        className="grid grid-cols-2 lg:grid-cols-6 gap-4"
+        data-testid="performance-metrics-skeleton"
+      >
+        {[...Array(6)].map((_, i) => (
         <div 
           key={i}
           className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 animate-pulse"
@@ -157,16 +157,16 @@ export function PerformanceView() {
 
       {!isLoading && !isError && metrics && metrics.totalDecisions > 0 && (
         <div 
-          className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+          className="grid grid-cols-2 lg:grid-cols-6 gap-4"
           role="list"
           aria-label="Métriques de performance"
         >
           <div role="listitem">
             <MetricCard
-              label="Taux de précision"
-              value={metrics.accuracyRate}
-              suffix="%"
-              tooltip="Pourcentage de recommandations de type PICK parmi toutes les décisions"
+              label="Win Rate (PICK résolus)"
+              value={metrics.pickWinRate ?? 'N/A'}
+              suffix={metrics.pickWinRate !== null ? '%' : undefined}
+              tooltip="Taux de réussite réel sur les picks dont le résultat est connu"
               testId="metric-accuracy"
               variant="success"
             />
@@ -195,6 +195,23 @@ export function PerformanceView() {
               tooltip="Nombre de décisions bloquées par les limites de risque"
               testId="metric-hard-stop"
               variant="error"
+            />
+          </div>
+          <div role="listitem">
+            <MetricCard
+              label="Picks résolus"
+              value={metrics.resolvedPicksCount}
+              tooltip="Nombre de picks avec issue connue (gagné/perdu)"
+              testId="metric-resolved-picks"
+            />
+          </div>
+          <div role="listitem">
+            <MetricCard
+              label="Picks en attente"
+              value={metrics.pendingPicksCount}
+              tooltip="Nombre de picks encore non résolus"
+              testId="metric-pending-picks"
+              variant="warning"
             />
           </div>
         </div>

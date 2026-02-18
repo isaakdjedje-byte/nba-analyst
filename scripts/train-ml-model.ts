@@ -8,10 +8,8 @@
  *   npx ts-node scripts/train-ml-model.ts --start-date 2023-01-01 --end-date 2024-01-01
  */
 
-import { prisma } from '@/server/db/client';
 import { createFeatureEngineeringService } from '@/server/ml/features/feature-engineering';
 import { createTrainingService, DEFAULT_TRAINING_CONFIG } from '@/server/ml/training/training-service';
-import { TrainingJob } from '@/server/ml/training/training-service';
 
 interface TrainOptions {
   startDate: Date;
@@ -22,7 +20,7 @@ interface TrainOptions {
 function parseArgs(): TrainOptions {
   const args = process.argv.slice(2);
   const options: TrainOptions = {
-    startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // Default: 1 year ago
+    startDate: new Date('2014-10-01T00:00:00.000Z'), // Default: full historical window
     endDate: new Date(), // Default: now
     activate: false,
   };
@@ -42,18 +40,6 @@ function parseArgs(): TrainOptions {
   }
 
   return options;
-}
-
-function printProgress(job: TrainingJob): void {
-  const barLength = 30;
-  const progress = job.progress.total > 0 ? job.progress.current / job.progress.total : 0;
-  const filled = Math.round(barLength * progress);
-  const empty = barLength - filled;
-  const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  const percent = Math.round(progress * 100);
-  
-  // Use console.log instead of stdout manipulation for cross-platform compatibility
-  console.log(`[${bar}] ${percent}% - ${job.progress.currentStep}`);
 }
 
 async function trainModel(): Promise<void> {

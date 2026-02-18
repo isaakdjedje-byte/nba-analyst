@@ -33,6 +33,7 @@ import type { DataSourceFingerprints } from '@/server/audit/types';
 import { getPredictionService, PredictionInput as MLPredictionInput } from '@/server/ml/prediction/prediction-service';
 import { createMonitoringService } from '@/server/ml/monitoring/monitoring-service';
 import { resolvePredictionOutcomes } from '@/server/ml/monitoring/outcome-resolution-service';
+import { applyAdaptiveThresholdsToPolicyConfig } from '@/server/policy/adaptive-thresholds';
 
 export interface PipelineConfig {
   /** Run ID in database */
@@ -247,6 +248,26 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
       bankrollPercent: DEFAULT_POLICY_CONFIG.hardStops.bankrollPercent,
       defaultStakeAmount: parseInt(process.env.DEFAULT_STAKE_AMOUNT || '100', 10),
     };
+
+    const adaptivePersistence = await applyAdaptiveThresholdsToPolicyConfig({
+      lookbackDays: 120,
+      actorId: 'system-adaptive-thresholds',
+    });
+
+    if (adaptivePersistence.adaptive.applied && adaptivePersistence.adaptive.overrides) {
+      jobConfig.policyConfigOverrides = adaptivePersistence.adaptive.overrides;
+      const applied = adaptivePersistence.adaptive.overrides;
+      const persistenceStatus = adaptivePersistence.changed
+        ? `persisted (version=${adaptivePersistence.snapshotVersion})`
+        : `not persisted (${adaptivePersistence.reason})`;
+      console.log(
+        `[Pipeline] Adaptive policy thresholds applied: confidence>=${applied.confidence.minThreshold.toFixed(2)}, edge>=${applied.edge.minThreshold.toFixed(2)} (samples=${adaptivePersistence.adaptive.sampleSize}, selected=${adaptivePersistence.adaptive.selectedCount}, precision=${(adaptivePersistence.adaptive.precision * 100).toFixed(1)}%, ${persistenceStatus})`
+      );
+    } else {
+      console.log(
+        `[Pipeline] Adaptive policy thresholds skipped: ${adaptivePersistence.reason} (samples=${adaptivePersistence.adaptive.sampleSize})`
+      );
+    }
     
     let picksCount = 0;
     let noBetCount = 0;
@@ -507,7 +528,7 @@ async function generateMLPrediction(
         scorePrediction: `${prediction.score.predictedHomeScore}-${prediction.score.predictedAwayScore}`,
         overUnderPrediction: prediction.overUnder.line,
         confidence: prediction.prediction.confidence,
-        edge: (prediction.prediction.confidence - 0.5) * 100, // Convert to percentage
+        edge: Math.abs(prediction.prediction.homeWinProbability - 0.5),
         modelVersion: prediction.model.version,
         featuresHash: `features-${prediction.model.featureCount}-${prediction.model.featureQuality.toFixed(2)}`,
         status: 'pending',
@@ -519,20 +540,24 @@ async function generateMLPrediction(
     
     console.log(`[Pipeline] ML Prediction created: ${homeTeam.name} vs ${awayTeam.name} (${prediction.prediction.winner}, ${(prediction.prediction.confidence * 100).toFixed(1)}% confidence, model: ${prediction.model.version})`);
 
-    await monitoring.recordPrediction({
-      predictionId: dbPrediction.id,
-      modelVersion: prediction.model.version,
-      algorithm: prediction.model.algorithm,
-      features: {
-        ...prediction.features,
-        featureCount: prediction.model.featureCount,
-        featureQuality: prediction.model.featureQuality,
-      },
-      predictedProbability: prediction.prediction.homeWinProbability,
-      predictedWinner: prediction.prediction.winner,
-      confidence: prediction.prediction.confidence,
-      latencyMs,
-    });
+    try {
+      await monitoring.recordPrediction({
+        predictionId: dbPrediction.id,
+        modelVersion: prediction.model.version,
+        algorithm: prediction.model.algorithm,
+        features: {
+          ...prediction.features,
+          featureCount: prediction.model.featureCount,
+          featureQuality: prediction.model.featureQuality,
+        },
+        predictedProbability: prediction.prediction.homeWinProbability,
+        predictedWinner: prediction.prediction.winner,
+        confidence: prediction.prediction.confidence,
+        latencyMs,
+      });
+    } catch (monitoringError) {
+      console.warn(`[Pipeline] Monitoring record failed for prediction ${dbPrediction.id}:`, monitoringError);
+    }
     
     return dbPrediction;
   } catch (error) {

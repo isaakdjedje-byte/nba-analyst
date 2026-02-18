@@ -14,6 +14,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { PerformanceMetricsResponse } from '../types';
 
+const REQUEST_TIMEOUT_MS = 10000;
+
 interface UsePerformanceMetricsOptions {
   fromDate?: string;
   toDate?: string;
@@ -28,7 +30,22 @@ async function fetchPerformanceMetrics(
   if (fromDate) params.set('fromDate', fromDate);
   if (toDate) params.set('toDate', toDate);
 
-  const response = await fetch(`/api/v1/metrics/performance?${params.toString()}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`/api/v1/metrics/performance?${params.toString()}`, {
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('La requete performance a expire. Veuillez reessayer.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

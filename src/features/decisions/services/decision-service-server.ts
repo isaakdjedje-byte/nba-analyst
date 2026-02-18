@@ -7,6 +7,54 @@
 import { prisma } from '@/server/db/client';
 import type { DecisionsResponse, Decision, DecisionStatus } from '../types';
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+async function getDefaultDecisionDate(): Promise<Date | null> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const nextDecision = await prisma.policyDecision.findFirst({
+    where: {
+      matchDate: {
+        gte: today,
+      },
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'asc' },
+    select: { matchDate: true },
+  });
+
+  if (nextDecision?.matchDate) {
+    return nextDecision.matchDate;
+  }
+
+  const latestPastDecision = await prisma.policyDecision.findFirst({
+    where: {
+      matchDate: {
+        lt: today,
+      },
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'desc' },
+    select: { matchDate: true },
+  });
+
+  return latestPastDecision?.matchDate ?? null;
+}
+
 /**
  * Fetch decisions directly from database (for Server Components)
  * @param date Optional date filter (ISO string)
@@ -30,9 +78,9 @@ export async function fetchDecisionsServer(
       dateStart = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 0, 0, 0);
       dateEnd = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
     } else {
-      const today = new Date();
-      dateStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
-      dateEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+      const baseDate = (await getDefaultDecisionDate()) ?? new Date();
+      dateStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0);
+      dateEnd = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59, 999);
     }
 
     // Fetch from database
@@ -41,6 +89,11 @@ export async function fetchDecisionsServer(
         matchDate: {
           gte: dateStart,
           lte: dateEnd,
+        },
+        NOT: {
+          modelVersion: {
+            startsWith: 'season-end-',
+          },
         },
         ...(status ? { status: status as DecisionStatus } : {}),
       },
@@ -54,7 +107,7 @@ export async function fetchDecisionsServer(
         },
       },
       orderBy: {
-        matchDate: 'desc',
+        matchDate: 'asc',
       },
     });
 
@@ -83,7 +136,7 @@ export async function fetchDecisionsServer(
         traceId,
         timestamp,
         count: transformedDecisions.length,
-        date: date || dateStart.toISOString().split('T')[0],
+        date: date || formatLocalDate(dateStart),
         fromCache: false,
       },
     };

@@ -304,19 +304,27 @@ export class TrainingService {
         // Get recent games and box scores for both teams
         const homeTeamGames = await prisma.game.findMany({
           where: {
-            homeTeamId: game.homeTeamId,
+            OR: [
+              { homeTeamId: game.homeTeamId },
+              { awayTeamId: game.homeTeamId },
+            ],
             gameDate: { lt: game.matchDate },
             homeScore: { not: null },
+            awayScore: { not: null },
           },
           orderBy: { gameDate: 'desc' },
           take: 10,
           include: { boxScore: true },
         });
-        
+
         const awayTeamGames = await prisma.game.findMany({
           where: {
-            awayTeamId: game.awayTeamId,
+            OR: [
+              { homeTeamId: game.awayTeamId },
+              { awayTeamId: game.awayTeamId },
+            ],
             gameDate: { lt: game.matchDate },
+            homeScore: { not: null },
             awayScore: { not: null },
           },
           orderBy: { gameDate: 'desc' },

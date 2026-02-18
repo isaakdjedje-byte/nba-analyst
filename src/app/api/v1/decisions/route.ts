@@ -18,6 +18,7 @@ import { prisma } from '@/server/db/client';
 import { getRedisClient } from '@/server/cache/redis-client';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
+import type { Prisma } from '@prisma/client';
 
 type DecisionStatus = 'PICK' | 'NO_BET' | 'HARD_STOP';
 
@@ -41,14 +42,15 @@ function getCacheKey(date: string, status?: string): string {
     : `decisions:${date}`;
 }
 
-// Type for Prisma where clause
-interface DecisionWhereClause {
-  matchDate: {
-    gte: Date;
-    lte: Date;
-  };
-  status?: DecisionStatus;
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
+
+// Type for Prisma where clause
+type DecisionWhereClause = Prisma.PolicyDecisionWhereInput;
 
 // Type for decision from database (based on Prisma include)
 interface DecisionFromDB {
@@ -148,6 +150,11 @@ async function fetchDecisionsFromDB(
       gte: dateStart,
       lte: dateEnd,
     },
+    NOT: {
+      modelVersion: {
+        startsWith: 'season-end-',
+      },
+    },
   };
 
   if (status) {
@@ -173,7 +180,7 @@ async function fetchDecisionsFromDB(
       },
     },
     orderBy: {
-      matchDate: 'desc',
+      matchDate: 'asc',
     },
     // C12: Add pagination
     ...(skip !== undefined ? { skip } : {}),
@@ -187,6 +194,63 @@ function getTodayBoundaries(): { start: Date; end: Date } {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   return { start, end };
+}
+
+async function getDefaultDecisionDate(): Promise<Date | null> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const nextDecision = await prisma.policyDecision.findFirst({
+    where: {
+      matchDate: {
+        gte: today,
+      },
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'asc' },
+    select: { matchDate: true },
+  });
+
+  if (nextDecision?.matchDate) {
+    return nextDecision.matchDate;
+  }
+
+  const latestPastDecision = await prisma.policyDecision.findFirst({
+    where: {
+      matchDate: {
+        lt: today,
+      },
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'desc' },
+    select: { matchDate: true },
+  });
+
+  if (latestPastDecision?.matchDate) {
+    return latestPastDecision.matchDate;
+  }
+
+  const latestDecision = await prisma.policyDecision.findFirst({
+    where: {
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'desc' },
+    select: { matchDate: true },
+  });
+
+  return latestDecision?.matchDate ?? null;
 }
 
 function parsePositiveInteger(value: string | null, fallback: number): number {
@@ -351,12 +415,35 @@ export async function GET(request: NextRequest) {
       }
       dateStart = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 0, 0, 0);
       dateEnd = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
-      cacheDateKey = dateParam.split('T')[0] || parsedDate.toISOString().split('T')[0] || new Date().toISOString().split('T')[0] || 'unknown-date';
+      cacheDateKey = dateParam.split('T')[0] || formatLocalDate(parsedDate);
     } else {
-      const today = getTodayBoundaries();
-      dateStart = today.start;
-      dateEnd = today.end;
-      cacheDateKey = new Date().toISOString().split('T')[0] || 'unknown-date';
+      const latestDecisionDate = await getDefaultDecisionDate();
+
+      if (latestDecisionDate) {
+        dateStart = new Date(
+          latestDecisionDate.getFullYear(),
+          latestDecisionDate.getMonth(),
+          latestDecisionDate.getDate(),
+          0,
+          0,
+          0
+        );
+        dateEnd = new Date(
+          latestDecisionDate.getFullYear(),
+          latestDecisionDate.getMonth(),
+          latestDecisionDate.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+        cacheDateKey = formatLocalDate(latestDecisionDate);
+      } else {
+        const today = getTodayBoundaries();
+        dateStart = today.start;
+        dateEnd = today.end;
+        cacheDateKey = formatLocalDate(new Date());
+      }
     }
 
     // Try cache first (cache-aside pattern)
@@ -391,6 +478,11 @@ export async function GET(request: NextRequest) {
         matchDate: {
           gte: dateStart,
           lte: dateEnd,
+        },
+        NOT: {
+          modelVersion: {
+            startsWith: 'season-end-',
+          },
         },
         ...(statusParam ? { status: statusParam as DecisionStatus } : {}),
       },

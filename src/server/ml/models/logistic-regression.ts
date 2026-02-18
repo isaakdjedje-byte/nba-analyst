@@ -313,8 +313,8 @@ export class LogisticRegressionModel {
     const homeWinProbability = this.predictProbability(vector);
     const awayWinProbability = 1 - homeWinProbability;
 
-    // Calculate confidence (distance from 0.5, scaled to 0-1)
-    const confidence = Math.abs(homeWinProbability - 0.5) * 2;
+    // Calibrated confidence proxy: winning side probability in [0.5, 1.0]
+    const confidence = Math.max(homeWinProbability, awayWinProbability);
 
     // Calculate feature contributions
     const featureContributions: Record<string, number> = {};

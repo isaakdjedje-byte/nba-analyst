@@ -88,10 +88,24 @@ export async function getLogs(params: LogsQueryParams): Promise<LogsResponse> {
   } = params;
 
   // Build query params for repository
+  const normalizedFromDate = fromDate ? new Date(fromDate) : undefined;
+  const normalizedToDate = toDate ? new Date(toDate) : undefined;
+
+  if (normalizedFromDate) {
+    normalizedFromDate.setHours(0, 0, 0, 0);
+  }
+
+  if (normalizedToDate) {
+    normalizedToDate.setHours(23, 59, 59, 999);
+  }
+
   const repoParams = {
-    fromDate: fromDate ? new Date(fromDate) : undefined,
-    toDate: toDate ? new Date(toDate) : undefined,
+    fromDate: normalizedFromDate,
+    toDate: normalizedToDate,
     status: status && status !== 'all' ? status as DecisionStatus : undefined,
+    dateField: 'executedAt' as const,
+    sortBy,
+    sortOrder,
     page,
     limit: Math.min(limit, 100), // Cap at 100 per page
   };

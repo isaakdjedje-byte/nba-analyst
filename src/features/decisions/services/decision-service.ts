@@ -6,6 +6,8 @@
 
 import type { DecisionsResponse, ApiError } from '../types';
 
+const REQUEST_TIMEOUT_MS = 10000;
+
 // Get base URL - works in both client and server
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
@@ -33,6 +35,9 @@ export async function fetchDecisions(
   const queryString = params.toString();
   const url = `${getBaseUrl()}/decisions${queryString ? `?${queryString}` : ''}`;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     const response = await fetch(url, {
       method: 'GET',
@@ -41,6 +46,7 @@ export async function fetchDecisions(
       },
       credentials: 'include', // Important: send cookies for auth
       cache: 'no-store',
+      signal: controller.signal,
     });
 
     const data = await response.json();
@@ -53,7 +59,13 @@ export async function fetchDecisions(
 
     return data as DecisionsResponse;
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('La requete a expire. Veuillez reessayer.');
+    }
+
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -109,7 +121,8 @@ export function formatMatchTime(startTime: string | null): string {
  */
 export function formatEdge(edge: number | null): string {
   if (edge === null || edge === undefined) return 'N/A';
-  return `${(edge * 100).toFixed(1)}%`;
+  const normalizedEdge = Math.abs(edge) <= 1 ? edge * 100 : edge;
+  return `${normalizedEdge.toFixed(1)}%`;
 }
 
 /**
@@ -118,5 +131,5 @@ export function formatEdge(edge: number | null): string {
  * @returns Formatted percentage string
  */
 export function formatConfidence(confidence: number): string {
-  return `${Math.round(confidence * 100)}%`;
+  return `${(confidence * 100).toFixed(1)}%`;
 }

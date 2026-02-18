@@ -5,6 +5,10 @@
 
 export interface PerformanceMetrics {
   accuracyRate: number;
+  pickWinRate: number | null;
+  resolvedPicksCount: number;
+  wonPicksCount: number;
+  pendingPicksCount: number;
   picksCount: number;
   noBetCount: number;
   hardStopCount: number;

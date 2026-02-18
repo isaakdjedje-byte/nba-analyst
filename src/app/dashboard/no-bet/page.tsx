@@ -9,7 +9,6 @@ import { authOptions } from '@/server/auth/auth-options';
 import { DecisionList, DecisionListSkeleton } from '@/features/decisions/components';
 import { fetchDecisionsServer } from '@/features/decisions/services/decision-service-server';
 import { GuardrailBannerWrapper } from '@/features/policy/components/GuardrailBannerWrapper';
-import { EmptyNoBetState } from '@/components/ui';
 import { Ban } from 'lucide-react';
 
 export default async function NoBetPage() {
@@ -26,8 +25,6 @@ export default async function NoBetPage() {
     }
   }
 
-  const hasDecisions = initialDecisions && initialDecisions.length > 0;
-
   return (
     <div>
       <GuardrailBannerWrapper />
@@ -43,15 +40,12 @@ export default async function NoBetPage() {
           </p>
         </div>
 
-        {hasDecisions ? (
-          <Suspense fallback={<DecisionListSkeleton count={6} />}>
-            <DecisionList initialData={initialDecisions} />
-          </Suspense>
-        ) : (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-            <EmptyNoBetState />
-          </div>
-        )}
+        <Suspense fallback={<DecisionListSkeleton count={6} />}>
+          <DecisionList
+            initialData={initialDecisions || undefined}
+            filterStatuses={['NO_BET', 'HARD_STOP']}
+          />
+        </Suspense>
       </div>
     </div>
   );

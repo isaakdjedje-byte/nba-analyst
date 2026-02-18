@@ -7,6 +7,7 @@
 import type { GuardrailStatus, GlobalGuardrailState, GuardrailApiResponse } from '../types';
 
 const API_BASE = '/api/v1';
+const REQUEST_TIMEOUT_MS = 10000;
 
 /**
  * Fetch global guardrail status from API
@@ -14,13 +15,27 @@ const API_BASE = '/api/v1';
  * @returns GlobalGuardrailState with status, cause, and recommended action
  */
 export async function getGlobalGuardrailStatus(): Promise<GlobalGuardrailState> {
-  const response = await fetch(`${API_BASE}/policy/global-status`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store',
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/policy/global-status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('La requete guardrail a expire. Veuillez reessayer.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

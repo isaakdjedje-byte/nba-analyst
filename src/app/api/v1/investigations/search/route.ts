@@ -246,10 +246,22 @@ export async function GET(request: NextRequest) {
     const dbStatus = status === 'all' ? undefined : status as DecisionStatus;
     const dbFromDate = fromDate ? new Date(fromDate) : undefined;
     const dbToDate = toDate ? new Date(toDate) : undefined;
+
+    if (dbFromDate) {
+      dbFromDate.setHours(0, 0, 0, 0);
+    }
+
+    if (dbToDate) {
+      dbToDate.setHours(23, 59, 59, 999);
+    }
+
     const decisions: DecisionHistoryResult = await getDecisionHistory({
       fromDate: dbFromDate,
       toDate: dbToDate,
       status: dbStatus,
+      dateField: 'executedAt',
+      sortBy: 'executedAt',
+      sortOrder: 'desc',
       page,
       limit,
     });
