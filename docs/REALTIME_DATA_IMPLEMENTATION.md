@@ -77,7 +77,7 @@ Ajoutez ces variables dans `.env`:
 REDIS_URL=redis://localhost:6379
 
 # The Odds API
-THE_ODDS_API_KEY=8b930b318df066da353304ff5167ad77
+THE_ODDS_API_KEY=your_real_api_key_here
 
 # ESPN (pas de cle requise)
 ESPN_API_URL=https://site.api.espn.com/apis/site/v2/sports/basketball/nba

@@ -12,14 +12,23 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
 import { triggerDailyRun } from '@/server/jobs/scheduler';
 
+function isOpsOrAdmin(role: string | null | undefined): boolean {
+  return role === 'ops' || role === 'admin';
+}
+
 // POST /api/v1/runs/trigger - Trigger a manual run
 export async function POST(request: NextRequest) {
   try {
     // Check authentication - require admin or ops role
     const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
     
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!isOpsOrAdmin(role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     // Parse request body
@@ -30,15 +39,19 @@ export async function POST(request: NextRequest) {
       // Empty body is OK
     }
     
-    const { skipIngestion, skipMLInference } = body;
+    const requestedSkipIngestion = body.skipIngestion === true;
+    const requestedSkipMLInference = body.skipMLInference === true;
+    const allowSkipFlags = process.env.NODE_ENV !== 'production';
+    const skipIngestion = allowSkipFlags ? requestedSkipIngestion : false;
+    const skipMLInference = allowSkipFlags ? requestedSkipMLInference : false;
     
     console.log(`[API] Manual run triggered by user: ${session.user.email}`);
     
     // Trigger the daily run
     const result = await triggerDailyRun({
       triggeredBy: `manual-${session.user.email || 'user'}`,
-      skipIngestion: skipIngestion === true,
-      skipMLInference: skipMLInference === true,
+      skipIngestion,
+      skipMLInference,
     });
     
     if (result.success) {

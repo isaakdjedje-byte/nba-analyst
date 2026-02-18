@@ -249,7 +249,7 @@ export async function GET(request: NextRequest) {
     }
     
     const allowUnauthenticatedDevAccess =
-      process.env.NODE_ENV !== 'production' &&
+      process.env.NODE_ENV === 'development' &&
       process.env.ALLOW_UNAUTHENTICATED_DECISIONS_DEV === 'true';
 
     if (!token && !allowUnauthenticatedDevAccess) {

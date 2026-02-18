@@ -15,8 +15,13 @@ interface OddsConfig {
   markets: string;
 }
 
+const oddsApiKey = process.env.THE_ODDS_API_KEY;
+if (!oddsApiKey) {
+  throw new Error('THE_ODDS_API_KEY is required to run fetch-odds-api-2025.ts');
+}
+
 const CONFIG: OddsConfig = {
-  apiKey: process.env.THE_ODDS_API_KEY || '8b930b318df066da353304ff5167ad77',
+  apiKey: oddsApiKey,
   baseUrl: 'https://api.the-odds-api.com/v4',
   sport: 'basketball_nba',
   regions: 'us',

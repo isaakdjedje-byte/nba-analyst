@@ -83,6 +83,7 @@ export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   "/api/v1/decisions": [UserRole.USER, UserRole.SUPPORT, UserRole.OPS, UserRole.ADMIN],
   "/api/v1/policy": [UserRole.OPS, UserRole.ADMIN],
   "/api/v1/runs": [UserRole.OPS, UserRole.ADMIN],
+  "/api/ingestion": [UserRole.OPS, UserRole.ADMIN],
 
   // Admin only routes
   "/admin": [UserRole.ADMIN],

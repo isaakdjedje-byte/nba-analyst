@@ -14,14 +14,23 @@ import { authOptions } from '@/server/auth/auth-options';
 import { prisma } from '@/server/db/client';
 import { triggerDailyRun } from '@/server/jobs/scheduler';
 
+function isOpsOrAdmin(role: string | null | undefined): boolean {
+  return role === 'ops' || role === 'admin';
+}
+
 // GET /api/v1/runs - List run history
 export async function GET(request: NextRequest) {
   try {
     // Check authentication
     const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
     
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!isOpsOrAdmin(role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const { searchParams } = new URL(request.url);
@@ -84,14 +93,23 @@ export async function POST(request: NextRequest) {
   try {
     // Check authentication - require admin or ops role
     const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string } | undefined)?.role;
     
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    if (!isOpsOrAdmin(role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     
     // Parse request body
     const body = await request.json();
-    const { skipIngestion, skipMLInference } = body;
+    const requestedSkipIngestion = body.skipIngestion === true;
+    const requestedSkipMLInference = body.skipMLInference === true;
+    const allowSkipFlags = process.env.NODE_ENV !== 'production';
+    const skipIngestion = allowSkipFlags ? requestedSkipIngestion : false;
+    const skipMLInference = allowSkipFlags ? requestedSkipMLInference : false;
     
     console.log(`[API] Manual run triggered by user: ${session.user.email}`);
     

@@ -414,7 +414,7 @@ async function saveGame(game) {
     `;
     return true;
   } catch (error) {
-    // Silently skip duplicates and other errors for now
+    console.warn(`Failed to save game ${game.externalId}: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -423,6 +423,31 @@ async function saveBoxScore(game) {
   try {
     const hs = game.homeStats || {};
     const as = game.awayStats || {};
+    const homeRebounds = Number.parseInt(hs.rebounds, 10);
+    const homeAssists = Number.parseInt(hs.assists, 10);
+    const homeFgPct = Number.parseFloat(hs.fieldGoalPct);
+    const home3pPct = Number.parseFloat(hs.threePointers);
+    const awayRebounds = Number.parseInt(as.rebounds, 10);
+    const awayAssists = Number.parseInt(as.assists, 10);
+    const awayFgPct = Number.parseFloat(as.fieldGoalPct);
+    const away3pPct = Number.parseFloat(as.threePointers);
+
+    const hasReliableStats = [
+      game.homeScore,
+      game.awayScore,
+      homeRebounds,
+      homeAssists,
+      homeFgPct,
+      home3pPct,
+      awayRebounds,
+      awayAssists,
+      awayFgPct,
+      away3pPct,
+    ].every((value) => Number.isFinite(value));
+
+    if (!hasReliableStats) {
+      return false;
+    }
     
     await prisma.$executeRaw`
       INSERT INTO box_scores (
@@ -434,16 +459,17 @@ async function saveBoxScore(game) {
         fetched_at
       ) VALUES (
         ${`bs-${game.externalId}`}, ${`game-${game.externalId}`},
-        ${game.homeScore || 0}, ${parseInt(hs.rebounds) || 45}, ${parseInt(hs.assists) || 25}, 8, 5, 14,
-        ${parseFloat(hs.fieldGoalPct) / 100 || 0.45}, ${parseFloat(hs.threePointers) / 100 || 0.35}, 0.75,
-        ${game.awayScore || 0}, ${parseInt(as.rebounds) || 43}, ${parseInt(as.assists) || 23}, 7, 4, 15,
-        ${parseFloat(as.fieldGoalPct) / 100 || 0.43}, ${parseFloat(as.threePointers) / 100 || 0.33}, 0.73,
+        ${game.homeScore}, ${homeRebounds}, ${homeAssists}, 8, 5, 14,
+        ${homeFgPct / 100}, ${home3pPct / 100}, 0.75,
+        ${game.awayScore}, ${awayRebounds}, ${awayAssists}, 7, 4, 15,
+        ${awayFgPct / 100}, ${away3pPct / 100}, 0.73,
         NOW()
       )
       ON CONFLICT (game_id) DO NOTHING
     `;
     return true;
   } catch (error) {
+    console.warn(`Failed to save box score for game ${game.externalId}: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -455,6 +481,7 @@ async function main() {
   const args = process.argv.slice(2);
   const seasons = [];
   let useMock = false;
+  let allowSynthetic = false;
   
   // Parse args
   for (let i = 0; i < args.length; i++) {
@@ -465,7 +492,17 @@ async function main() {
       }
     } else if (args[i] === '--use-mock') {
       useMock = true;
+    } else if (args[i] === '--allow-synthetic') {
+      allowSynthetic = true;
     }
+  }
+
+  if (useMock && !allowSynthetic) {
+    throw new Error('Refusing --use-mock without explicit --allow-synthetic flag');
+  }
+
+  if (useMock && process.env.NODE_ENV === 'production') {
+    throw new Error('Mock data generation is forbidden in production');
   }
   
   // Default: current season

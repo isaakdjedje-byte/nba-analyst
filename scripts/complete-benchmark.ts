@@ -396,21 +396,7 @@ async function runPythonPredictions(games: BenchmarkGame[]): Promise<BenchmarkRe
         });
         
       } catch (error) {
-        // Fallback to random prediction on error
-        batch.forEach(game => {
-          const predicted = Math.random() > 0.5 ? 'HOME' : 'AWAY';
-          const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
-          if (isCorrect) correct++;
-          
-          predictions.push({
-            gameId: game.gameId,
-            predicted,
-            actual: game.homeWon ? 'HOME' : 'AWAY',
-            confidence: 0.5,
-            probability: 0.5,
-            latency: 0
-          });
-        });
+        throw new Error(`Python V3 batch prediction failed: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       if ((i + batchSize) % 50 === 0) {
@@ -480,19 +466,7 @@ async function runPythonPredictions(games: BenchmarkGame[]): Promise<BenchmarkRe
         maxLatency = Math.max(maxLatency, latency);
         
       } catch (error) {
-        // Fallback
-        const predicted = Math.random() > 0.5 ? 'HOME' : 'AWAY';
-        const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
-        if (isCorrect) correct++;
-        
-        predictions.push({
-          gameId: game.gameId,
-          predicted,
-          actual: game.homeWon ? 'HOME' : 'AWAY',
-          confidence: 0.5,
-          probability: 0.5,
-          latency: 0
-        });
+        throw new Error(`Python V3 subprocess prediction failed for game ${game.gameId}: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       if ((i + 1) % 20 === 0) {
@@ -567,6 +541,10 @@ async function runLogisticRegression(games: BenchmarkGame[]): Promise<BenchmarkR
   });
 
   const model = new LogisticRegressionModel();
+  if (!fallbackModel) {
+    throw new Error('No logistic-regression model available for benchmark');
+  }
+
   if (fallbackModel?.weights && typeof fallbackModel.weights === 'object') {
     try {
       model.setWeights(fallbackModel.weights as any);
@@ -617,23 +595,7 @@ async function runLogisticRegression(games: BenchmarkGame[]): Promise<BenchmarkR
       minLatency = Math.min(minLatency, latency);
       maxLatency = Math.max(maxLatency, latency);
     } catch (e) {
-      // Fallback
-      const predicted = Math.random() > 0.5 ? 'HOME' : 'AWAY';
-      const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
-      if (isCorrect) correct++;
-      
-      predictions.push({
-        gameId: game.gameId,
-        predicted,
-        actual: game.homeWon ? 'HOME' : 'AWAY',
-        confidence: 0.5,
-        probability: 0.5,
-        latency: 0
-      });
-
-      totalLatency += 0;
-      minLatency = Math.min(minLatency, 0);
-      maxLatency = Math.max(maxLatency, 0);
+      throw new Error(`LogisticRegression prediction failed for game ${game.gameId}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -670,11 +632,15 @@ async function runXGBoost(games: BenchmarkGame[]): Promise<BenchmarkResult> {
   let minLatency = Infinity;
   let maxLatency = 0;
 
-  // Try to load trained XGBoost model, otherwise use heuristic
+  // Require trained XGBoost model for truthful benchmarking
   const xgbModel = await prisma.mLModel.findFirst({
     where: { algorithm: 'xgboost' },
     orderBy: { createdAt: 'desc' }
   });
+
+  if (!xgbModel?.weights || typeof xgbModel.weights !== 'object') {
+    throw new Error('No trained XGBoost model available for benchmark');
+  }
 
   const model = new XGBoostModel();
   let hasTrainedModel = false;
@@ -717,9 +683,7 @@ async function runXGBoost(games: BenchmarkGame[]): Promise<BenchmarkResult> {
       prob = result.homeWinProbability;
       predicted = result.predictedWinner;
     } else {
-      // Heuristic fallback
-      prob = game.pythonV3Features.ml_home_prob;
-      predicted = prob > 0.5 ? 'HOME' : 'AWAY';
+      throw new Error('Loaded XGBoost model state is invalid for benchmark');
     }
     const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
     
@@ -751,7 +715,7 @@ async function runXGBoost(games: BenchmarkGame[]): Promise<BenchmarkResult> {
   console.log(`   Min/Max: ${minLatency}ms/${maxLatency}ms`);
 
   return {
-    modelName: hasTrainedModel ? 'TypeScript XGBoost (Trained)' : 'TypeScript XGBoost (Heuristic)',
+    modelName: 'TypeScript XGBoost (Trained)',
     option: 'C',
     numPredictions: predictions.length,
     correct,
