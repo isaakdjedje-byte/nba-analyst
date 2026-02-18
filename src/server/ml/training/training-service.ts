@@ -13,7 +13,7 @@
 import { prisma } from '@/server/db/client';
 import type { Prisma } from '@prisma/client';
 import { FeatureEngineeringService } from '@/server/ml/features/feature-engineering';
-import { FeatureRecord, ModelFeatures } from '@/server/ml/features/types';
+import { ModelFeatures } from '@/server/ml/features/types';
 import {
   LogisticRegressionModel,
   TrainingExample,
@@ -30,6 +30,7 @@ export interface TrainingConfig {
   // Data split
   trainTestSplit: number; // 0.8 = 80% train, 20% test
   minTrainingSamples: number; // Minimum games needed
+  shuffleSeed: number;
   
   // Training params
   learningRate: number;
@@ -90,6 +91,7 @@ export interface HistoricalGameResult {
   awayTeamId: number;
   homeTeamName?: string;
   awayTeamName?: string;
+  seasonType?: string;
   matchDate: Date;
   homeScore: number;
   awayScore: number;
@@ -122,6 +124,57 @@ interface HistoricalGameRow {
   awayTeamId: number;
   homeScore: number;
   awayScore: number;
+  gameDate: Date;
+}
+
+export interface BinaryPrediction {
+  prob: number;
+  actual: number;
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * Calculate AUC-ROC using rank statistics (Mann-Whitney U).
+ * Returns value in [0, 1].
+ */
+export function calculateAUC(predictions: BinaryPrediction[]): number {
+  if (predictions.length === 0) return 0.5;
+
+  const rows = predictions
+    .filter((p) => (p.actual === 0 || p.actual === 1) && Number.isFinite(p.prob))
+    .map((p) => ({ prob: clamp01(p.prob), actual: p.actual }));
+
+  const positives = rows.filter((p) => p.actual === 1).length;
+  const negatives = rows.filter((p) => p.actual === 0).length;
+  if (positives === 0 || negatives === 0) return 0.5;
+
+  const sorted = [...rows].sort((a, b) => a.prob - b.prob);
+  let rank = 1;
+  let sumPositiveRanks = 0;
+
+  for (let i = 0; i < sorted.length;) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1].prob === sorted[i].prob) {
+      j++;
+    }
+
+    const avgRank = (rank + (rank + (j - i))) / 2;
+    for (let k = i; k <= j; k++) {
+      if (sorted[k].actual === 1) {
+        sumPositiveRanks += avgRank;
+      }
+    }
+
+    rank += j - i + 1;
+    i = j + 1;
+  }
+
+  const auc = (sumPositiveRanks - (positives * (positives + 1)) / 2) / (positives * negatives);
+  return clamp01(auc);
 }
 
 // =============================================================================
@@ -131,6 +184,7 @@ interface HistoricalGameRow {
 export const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
   trainTestSplit: 0.8,
   minTrainingSamples: 100,
+  shuffleSeed: 42,
   learningRate: 0.01,
   maxIterations: 5000,
   regularizationLambda: 0.01,
@@ -174,6 +228,9 @@ export class TrainingService {
         homeScore: { not: null },
         awayScore: { not: null },
       },
+      include: {
+        boxScore: true,
+      },
     });
 
     const games: HistoricalGameResult[] = [];
@@ -182,32 +239,35 @@ export class TrainingService {
     for (const game of dbGames) {
       const homeWon = game.homeScore > game.awayScore;
       
-      // Create box score from game data
+      if (!game.boxScore) {
+        continue;
+      }
+
       const boxScore: BoxScore = {
         gameId: game.externalId,
         homeTeam: {
           teamId: game.homeTeamId,
           points: game.homeScore,
-          rebounds: 45, // Placeholder - would come from box_score relation
-          assists: 25,
-          steals: 8,
-          blocks: 5,
-          turnovers: 12,
-          fieldGoalPercentage: 0.45,
-          threePointPercentage: 0.35,
-          freeThrowPercentage: 0.75,
+          rebounds: game.boxScore.homeRebounds,
+          assists: game.boxScore.homeAssists,
+          steals: game.boxScore.homeSteals,
+          blocks: game.boxScore.homeBlocks,
+          turnovers: game.boxScore.homeTurnovers,
+          fieldGoalPercentage: game.boxScore.homeFgPct,
+          threePointPercentage: game.boxScore.home3pPct,
+          freeThrowPercentage: game.boxScore.homeFtPct,
         },
         awayTeam: {
           teamId: game.awayTeamId,
           points: game.awayScore,
-          rebounds: 43,
-          assists: 23,
-          steals: 7,
-          blocks: 4,
-          turnovers: 14,
-          fieldGoalPercentage: 0.43,
-          threePointPercentage: 0.33,
-          freeThrowPercentage: 0.72,
+          rebounds: game.boxScore.awayRebounds,
+          assists: game.boxScore.awayAssists,
+          steals: game.boxScore.awaySteals,
+          blocks: game.boxScore.awayBlocks,
+          turnovers: game.boxScore.awayTurnovers,
+          fieldGoalPercentage: game.boxScore.awayFgPct,
+          threePointPercentage: game.boxScore.away3pPct,
+          freeThrowPercentage: game.boxScore.awayFtPct,
         },
         homePlayers: [],
         awayPlayers: [],
@@ -217,6 +277,7 @@ export class TrainingService {
         gameId: game.externalId,
         homeTeamId: game.homeTeamId,
         awayTeamId: game.awayTeamId,
+        seasonType: game.seasonType,
         matchDate: game.gameDate,
         homeScore: game.homeScore,
         awayScore: game.awayScore,
@@ -299,103 +360,17 @@ export class TrainingService {
           awayOffensiveRating: normalizeRating(awayFeatures.offensiveRating),
           awayDefensiveRating: normalizeRating(awayFeatures.defensiveRating),
           awayForm: awayFeatures.form,
-          homeAdvantage: 1,
+          homeAdvantage: homeFeatures.winRate - awayFeatures.winRate,
           h2hAdvantage: h2hStats.games > 0 ? (h2hStats.homeWins / h2hStats.games - 0.5) * 2 : 0, // -1 to 1
           matchupStrength: (homeFeatures.winRate + awayFeatures.winRate) / 2,
-          isBackToBack: 0,
+          isBackToBack: homeFeatures.restDays === 0 || awayFeatures.restDays === 0 ? 1 : 0,
           daysRestDiff: (homeFeatures.restDays - awayFeatures.restDays) / 5, // -1 to 1
-          isPlayoff: 0,
-        };
-
-        // Create feature record with correct types
-        const featureRecord: FeatureRecord = {
-          id: `feat-${game.gameId}`,
-          matchId: game.gameId.toString(),
-          homeTeamId: game.homeTeamId,
-          awayTeamId: game.awayTeamId,
-          matchDate: game.matchDate,
-          homeFeatures: { 
-            teamId: game.homeTeamId,
-            teamName: game.homeTeamName || 'Home',
-            abbreviation: 'HME',
-            conference: 'East',
-            games: homeFeatures.games, 
-            wins: homeFeatures.wins,
-            losses: homeFeatures.games - homeFeatures.wins,
-            winRate: homeFeatures.winRate,
-            pointsScoredAvg: homeFeatures.pointsFor / Math.max(1, homeFeatures.games),
-            pointsAllowedAvg: homeFeatures.pointsAgainst / Math.max(1, homeFeatures.games),
-            fieldGoalPercentage: 0.45,
-            threePointPercentage: 0.35,
-            freeThrowPercentage: 0.75,
-            assistsAvg: 22,
-            offensiveRating: homeFeatures.offensiveRating,
-            reboundsAvg: 42,
-            stealsAvg: 7,
-            blocksAvg: 4,
-            turnoversAvg: 12,
-            defensiveRating: homeFeatures.defensiveRating,
-            last5WinRate: homeFeatures.form,
-            last5PointsAvg: homeFeatures.pointsFor / Math.max(1, homeFeatures.games),
-            last5PointsAllowedAvg: homeFeatures.pointsAgainst / Math.max(1, homeFeatures.games),
-            homeWinRate: homeFeatures.winRate,
-            awayWinRate: 0.5,
-            daysSinceLastGame: homeFeatures.restDays,
-            backToBack: false,
-            restAdvantage: homeFeatures.restDays - awayFeatures.restDays,
-          },
-          awayFeatures: { 
-            teamId: game.awayTeamId,
-            teamName: game.awayTeamName || 'Away',
-            abbreviation: 'AWY',
-            conference: 'West',
-            games: awayFeatures.games, 
-            wins: awayFeatures.wins,
-            losses: awayFeatures.games - awayFeatures.wins,
-            winRate: awayFeatures.winRate,
-            pointsScoredAvg: awayFeatures.pointsFor / Math.max(1, awayFeatures.games),
-            pointsAllowedAvg: awayFeatures.pointsAgainst / Math.max(1, awayFeatures.games),
-            fieldGoalPercentage: 0.45,
-            threePointPercentage: 0.35,
-            freeThrowPercentage: 0.75,
-            assistsAvg: 22,
-            offensiveRating: awayFeatures.offensiveRating,
-            reboundsAvg: 42,
-            stealsAvg: 7,
-            blocksAvg: 4,
-            turnoversAvg: 12,
-            defensiveRating: awayFeatures.defensiveRating,
-            last5WinRate: awayFeatures.form,
-            last5PointsAvg: awayFeatures.pointsFor / Math.max(1, awayFeatures.games),
-            last5PointsAllowedAvg: awayFeatures.pointsAgainst / Math.max(1, awayFeatures.games),
-            homeWinRate: 0.5,
-            awayWinRate: awayFeatures.winRate,
-            daysSinceLastGame: awayFeatures.restDays,
-            backToBack: false,
-            restAdvantage: awayFeatures.restDays - homeFeatures.restDays,
-          },
-          matchupFeatures: { 
-            h2hHomeWins: h2hStats.homeWins,
-            h2hAwayWins: h2hStats.games - h2hStats.homeWins,
-            h2hAvgPointDiff: h2hStats.avgPointDiff,
-          },
-          contextFeatures: { 
-            isPlayoff: false,
-            isBackToBackForEither: false,
-            daysRestDiff: homeFeatures.restDays - awayFeatures.restDays,
-            dayOfWeek: game.matchDate.getDay(),
-            month: game.matchDate.getMonth(),
-            isWeekend: [0, 6].includes(game.matchDate.getDay()),
-          },
-          modelFeatures,
-          computedAt: new Date(),
-          dataVersion: '1.0',
-          freshnessScore: 1.0,
+          isPlayoff: game.seasonType === 'Playoffs' ? 1 : 0,
         };
 
         // Create training example
         examples.push({
-          features: featureRecord.modelFeatures,
+          features: modelFeatures,
           label: game.homeWon ? 1 : 0,
         });
       } catch (error) {
@@ -421,8 +396,13 @@ export class TrainingService {
    * Split data into train/test sets
    */
   private splitData(examples: TrainingExample[]): { train: TrainingExample[]; test: TrainingExample[] } {
-    // Shuffle examples
-    const shuffled = [...examples].sort(() => Math.random() - 0.5);
+    // Deterministic Fisher-Yates shuffle for reproducible train/test splits.
+    const shuffled = [...examples];
+    const nextRandom = this.createSeededRng(this.config.shuffleSeed);
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(nextRandom() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
     
     const splitIndex = Math.floor(shuffled.length * this.config.trainTestSplit);
     
@@ -485,8 +465,7 @@ export class TrainingService {
     console.log(`      True Positives: ${truePositives}, True Negatives: ${trueNegatives}`);
     console.log(`      False Positives: ${falsePositives}, False Negatives: ${falseNegatives}`);
 
-    // Calculate AUC (simplified)
-    const auc = this.calculateAUC(predictions);
+    const auc = calculateAUC(predictions);
 
     // Calculate calibration error (ECE)
     const calibrationError = this.calculateCalibrationError(predictions);
@@ -502,31 +481,12 @@ export class TrainingService {
     };
   }
 
-  /**
-   * Calculate AUC-ROC (simplified)
-   */
-  private calculateAUC(predictions: { prob: number; actual: number }[]): number {
-    // Sort by predicted probability
-    const sorted = [...predictions].sort((a, b) => b.prob - a.prob);
-    
-    let auc = 0.5; // Default
-    let tp = 0;
-    let prevTp = 0;
-    const totalPositives = sorted.filter(p => p.actual === 1).length;
-    const totalNegatives = sorted.filter(p => p.actual === 0).length;
-
-    if (totalPositives === 0 || totalNegatives === 0) return 0.5;
-
-    for (const pred of sorted) {
-      if (pred.actual === 1) {
-        tp++;
-      } else {
-        auc += (tp + prevTp) / (2 * totalPositives) * (1 / totalNegatives);
-      }
-      prevTp = tp;
-    }
-
-    return auc;
+  private createSeededRng(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (1664525 * state + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
   }
 
   /**
@@ -829,10 +789,10 @@ export class TrainingService {
         pointsFor: 0,
         pointsAgainst: 0,
         winRate: 0.5,
-        offensiveRating: 110,
-        defensiveRating: 110,
+        offensiveRating: 0,
+        defensiveRating: 0,
         form: 0.5,
-        restDays: 2,
+        restDays: 0,
       };
     }
 
@@ -862,6 +822,14 @@ export class TrainingService {
     const totalGames = games.length;
     const winRate = totalGames > 0 ? wins / totalGames : 0.5;
     const form = recentGames.length > 0 ? last5Wins / recentGames.length : 0.5;
+
+    let restDays = 0;
+    if (games.length > 1) {
+      const latest = new Date(games[0].gameDate).getTime();
+      const previous = new Date(games[1].gameDate).getTime();
+      const dayMs = 24 * 60 * 60 * 1000;
+      restDays = Math.max(0, Math.floor((latest - previous) / dayMs));
+    }
     
     // Calculate ratings (simplified)
     const avgPointsFor = totalGames > 0 ? pointsFor / totalGames : 100;
@@ -878,7 +846,7 @@ export class TrainingService {
       offensiveRating,
       defensiveRating,
       form,
-      restDays: 2, // Placeholder
+      restDays,
     };
   }
 
