@@ -29,7 +29,10 @@ export default function MFASetupPage() {
 
   useEffect(() => {
     // Fetch MFA setup data
-    fetch("/api/auth/mfa/setup")
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+
+    fetch("/api/auth/mfa/setup", { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -41,9 +44,14 @@ export default function MFASetupPage() {
         setLoading(false);
       })
       .catch(() => {
-        setError("Failed to load MFA setup");
+        setError("Failed to load MFA setup (timeout or network error)");
         setLoading(false);
       });
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, []);
 
   const handleVerify = async (e: React.FormEvent) => {
