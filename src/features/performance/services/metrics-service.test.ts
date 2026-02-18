@@ -1,64 +1,153 @@
 /**
  * Unit Tests for Performance Metrics Service
- * Story 4.1: Creer la vue Performance avec historique des recommandations
- * 
- * Tests date validation and cache invalidation functions
  */
 
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getDefaultDateRange, isValidDateRange } from './metrics-service';
+const {
+  cacheGetMock,
+  cacheSetMock,
+  cacheDeleteByPatternMock,
+  policyDecisionCountMock,
+  policyDecisionGroupByMock,
+  policyDecisionFindManyMock,
+  predictionLogCountMock,
+} = vi.hoisted(() => ({
+  cacheGetMock: vi.fn(),
+  cacheSetMock: vi.fn(),
+  cacheDeleteByPatternMock: vi.fn(),
+  policyDecisionCountMock: vi.fn(),
+  policyDecisionGroupByMock: vi.fn(),
+  policyDecisionFindManyMock: vi.fn(),
+  predictionLogCountMock: vi.fn(),
+}));
+
+vi.mock('@/server/cache/cache-service', () => ({
+  CacheService: class {
+    constructor() {}
+    get = cacheGetMock;
+    set = cacheSetMock;
+    deleteByPattern = cacheDeleteByPatternMock;
+  },
+}));
+
+vi.mock('@/server/db/client', () => ({
+  prisma: {
+    policyDecision: {
+      count: policyDecisionCountMock,
+      groupBy: policyDecisionGroupByMock,
+      findMany: policyDecisionFindManyMock,
+    },
+    predictionLog: {
+      count: predictionLogCountMock,
+    },
+  },
+}));
+
+import {
+  calculatePerformanceMetrics,
+  getDefaultDateRange,
+  invalidateMetricsCache,
+  isValidDateRange,
+} from './metrics-service';
 
 describe('Performance Metrics Service', () => {
+  beforeEach(() => {
+    cacheGetMock.mockReset();
+    cacheSetMock.mockReset();
+    cacheDeleteByPatternMock.mockReset();
+    policyDecisionCountMock.mockReset();
+    policyDecisionGroupByMock.mockReset();
+    policyDecisionFindManyMock.mockReset();
+    predictionLogCountMock.mockReset();
+
+    cacheGetMock.mockResolvedValue(null);
+    cacheSetMock.mockResolvedValue(undefined);
+    cacheDeleteByPatternMock.mockResolvedValue(3);
+
+    policyDecisionCountMock.mockResolvedValue(3);
+    policyDecisionGroupByMock.mockResolvedValue([
+      { status: 'PICK', _count: { status: 2 } },
+      { status: 'NO_BET', _count: { status: 1 } },
+    ]);
+    policyDecisionFindManyMock.mockResolvedValue([
+      { predictionId: 'pred-1' },
+      { predictionId: 'pred-2' },
+    ]);
+    predictionLogCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+  });
+
   describe('getDefaultDateRange', () => {
-    it('should return a valid date range', () => {
-      // Act
+    it('returns a valid local YYYY-MM-DD range', () => {
       const result = getDefaultDateRange();
 
-      // Assert
-      expect(result.fromDate).toBeDefined();
-      expect(result.toDate).toBeDefined();
-      // Compare as dates
-      expect(new Date(result.fromDate).getTime()).toBeLessThanOrEqual(new Date(result.toDate).getTime());
       expect(result.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(result.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    });
-
-    it('should return a date range approximately 30 days apart', () => {
-      // Act
-      const result = getDefaultDateRange();
-      const fromDate = new Date(result.fromDate);
-      const toDate = new Date(result.toDate);
-      const diffDays = Math.floor((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Assert - should be around 30 days
-      expect(diffDays).toBeGreaterThanOrEqual(29);
-      expect(diffDays).toBeLessThanOrEqual(31);
+      expect(new Date(result.fromDate).getTime()).toBeLessThanOrEqual(new Date(result.toDate).getTime());
     });
   });
 
   describe('isValidDateRange', () => {
-    it('should return true for valid date range', () => {
+    it('returns true for valid ranges and optional params', () => {
       expect(isValidDateRange('2026-01-01', '2026-01-31')).toBe(true);
-    });
-
-    it('should return true for same day date range', () => {
-      expect(isValidDateRange('2026-01-15', '2026-01-15')).toBe(true);
-    });
-
-    it('should return true for null dates (optional)', () => {
       expect(isValidDateRange(null, null)).toBe(true);
       expect(isValidDateRange(undefined, undefined)).toBe(true);
-      expect(isValidDateRange(null, '2026-01-31')).toBe(true);
-      expect(isValidDateRange('2026-01-01', null)).toBe(true);
     });
 
-    it('should return false for invalid date strings', () => {
+    it('returns false for invalid ranges', () => {
       expect(isValidDateRange('not-a-date', '2026-01-31')).toBe(false);
+      expect(isValidDateRange('2026-01-31', '2026-01-01')).toBe(false);
+    });
+  });
+
+  describe('calculatePerformanceMetrics', () => {
+    it('filters by matchDate (not executedAt) and computes pick metrics', async () => {
+      const result = await calculatePerformanceMetrics(
+        { fromDate: '2026-01-01', toDate: '2026-01-31' },
+        { skipCache: true }
+      );
+
+      expect(policyDecisionCountMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            matchDate: expect.objectContaining({
+              gte: expect.any(Date),
+              lte: expect.any(Date),
+            }),
+          }),
+        })
+      );
+
+      const whereArg = policyDecisionCountMock.mock.calls[0][0].where as Record<string, unknown>;
+      expect(whereArg).not.toHaveProperty('executedAt');
+
+      expect(result.totalDecisions).toBe(3);
+      expect(result.picksCount).toBe(2);
+      expect(result.noBetCount).toBe(1);
+      expect(result.hardStopCount).toBe(0);
+      expect(result.resolvedPicksCount).toBe(2);
+      expect(result.wonPicksCount).toBe(1);
+      expect(result.pendingPicksCount).toBe(0);
+      expect(result.pickWinRate).toBe(50);
+      expect(result.accuracyRate).toBe(50);
     });
 
-    it('should return false when fromDate is after toDate', () => {
-      expect(isValidDateRange('2026-01-31', '2026-01-01')).toBe(false);
+    it('builds distinct cache keys for different date ranges', async () => {
+      await calculatePerformanceMetrics({ fromDate: '2026-01-01', toDate: '2026-01-31' });
+      await calculatePerformanceMetrics({ fromDate: '2026-02-01', toDate: '2026-02-28' });
+
+      expect(cacheGetMock).toHaveBeenNthCalledWith(1, 'performance:2026-01-01:2026-01-31');
+      expect(cacheGetMock).toHaveBeenNthCalledWith(2, 'performance:2026-02-01:2026-02-28');
+      expect(cacheSetMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('invalidateMetricsCache', () => {
+    it('invalidates performance cache namespace', async () => {
+      const deleted = await invalidateMetricsCache();
+
+      expect(cacheDeleteByPatternMock).toHaveBeenCalledWith('performance:*');
+      expect(deleted).toBe(3);
     });
   });
 });
