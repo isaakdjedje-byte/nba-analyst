@@ -185,7 +185,7 @@ export function calibrateModel(
     : trainIsotonicRegression(predictions);
   
   return {
-    basePredict: (_features: ModelFeatures) => ({ homeWinProbability: 0.5 }), // Placeholder
+    basePredict: () => ({ homeWinProbability: 0.5 }), // Placeholder - features param removed
     calibrate: (rawProb: number) => {
       if (method === 'platt') {
         return applyPlattScaling(rawProb, params as PlattParams);
