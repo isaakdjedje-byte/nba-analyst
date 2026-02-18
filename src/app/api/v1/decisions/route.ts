@@ -51,6 +51,42 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function getDayRange(date: Date): { start: Date; endExclusive: Date } {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const endExclusive = new Date(start);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  return { start, endExclusive };
+}
+
+function parseDateParamToDayRange(dateParam: string): { start: Date; endExclusive: Date; cacheKey: string } {
+  const datePart = dateParam.split('T')[0] ?? dateParam;
+  const match = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error('INVALID_DATE_FORMAT');
+  }
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10) - 1;
+  const day = Number.parseInt(match[3], 10);
+  const localDate = new Date(year, month, day, 0, 0, 0, 0);
+
+  if (
+    Number.isNaN(localDate.getTime()) ||
+    localDate.getFullYear() !== year ||
+    localDate.getMonth() !== month ||
+    localDate.getDate() !== day
+  ) {
+    throw new Error('INVALID_DATE_VALUE');
+  }
+
+  const { start, endExclusive } = getDayRange(localDate);
+  return {
+    start,
+    endExclusive,
+    cacheKey: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+  };
+}
+
 // Type for Prisma where clause
 type DecisionWhereClause = Prisma.PolicyDecisionWhereInput;
 
@@ -245,7 +281,7 @@ function normalizeDecisionFromCache(input: unknown): DecisionFromDB | null {
 // C12: Added pagination support (skip, limit)
 async function fetchDecisionsFromDB(
   dateStart: Date, 
-  dateEnd: Date, 
+  dateEndExclusive: Date,
   status?: string,
   skip?: number,
   limit?: number
@@ -253,7 +289,7 @@ async function fetchDecisionsFromDB(
   const where: DecisionWhereClause = {
     matchDate: {
       gte: dateStart,
-      lte: dateEnd,
+      lt: dateEndExclusive,
     },
     NOT: {
       modelVersion: {
@@ -294,11 +330,8 @@ async function fetchDecisionsFromDB(
 }
 
 // Get today's date boundaries
-function getTodayBoundaries(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  return { start, end };
+function getTodayBoundaries(): { start: Date; endExclusive: Date } {
+  return getDayRange(new Date());
 }
 
 async function getDefaultDecisionDate(): Promise<Date | null> {
@@ -500,12 +533,14 @@ export async function GET(request: NextRequest) {
 
     // Determine date range (default to today)
     let dateStart: Date;
-    let dateEnd: Date;
+    let dateEndExclusive: Date;
     let cacheDateKey: string;
 
     if (dateParam) {
-      const parsedDate = new Date(dateParam);
-      if (isNaN(parsedDate.getTime())) {
+      let parsed;
+      try {
+        parsed = parseDateParamToDayRange(dateParam);
+      } catch {
         return NextResponse.json(
           {
             error: {
@@ -518,35 +553,22 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      dateStart = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 0, 0, 0);
-      dateEnd = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
-      cacheDateKey = dateParam.split('T')[0] || formatLocalDate(parsedDate);
+
+      dateStart = parsed.start;
+      dateEndExclusive = parsed.endExclusive;
+      cacheDateKey = parsed.cacheKey;
     } else {
       const latestDecisionDate = await getDefaultDecisionDate();
 
       if (latestDecisionDate) {
-        dateStart = new Date(
-          latestDecisionDate.getFullYear(),
-          latestDecisionDate.getMonth(),
-          latestDecisionDate.getDate(),
-          0,
-          0,
-          0
-        );
-        dateEnd = new Date(
-          latestDecisionDate.getFullYear(),
-          latestDecisionDate.getMonth(),
-          latestDecisionDate.getDate(),
-          23,
-          59,
-          59,
-          999
-        );
+        const range = getDayRange(latestDecisionDate);
+        dateStart = range.start;
+        dateEndExclusive = range.endExclusive;
         cacheDateKey = formatLocalDate(latestDecisionDate);
       } else {
         const today = getTodayBoundaries();
         dateStart = today.start;
-        dateEnd = today.end;
+        dateEndExclusive = today.endExclusive;
         cacheDateKey = formatLocalDate(new Date());
       }
     }
@@ -582,7 +604,7 @@ export async function GET(request: NextRequest) {
       where: {
         matchDate: {
           gte: dateStart,
-          lte: dateEnd,
+          lt: dateEndExclusive,
         },
         NOT: {
           modelVersion: {
@@ -600,7 +622,7 @@ export async function GET(request: NextRequest) {
         fromCache = false;
       }
 
-      decisions = await fetchDecisionsFromDB(dateStart, dateEnd, statusParam || undefined, skip, limit);
+      decisions = await fetchDecisionsFromDB(dateStart, dateEndExclusive, statusParam || undefined, skip, limit);
 
       // Store in cache for 5 minutes (only page 1)
       if (page === 1) {

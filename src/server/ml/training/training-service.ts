@@ -19,7 +19,7 @@ import {
   TrainingExample,
   TrainingResult,
 } from '@/server/ml/models/logistic-regression';
-import { XGBoostModel } from '@/server/ml/models/xgboost-model';
+import { XGBoostModel, type TrainingResult as XGBoostTrainingResult } from '@/server/ml/models/xgboost-model';
 import { BoxScore } from '@/server/ingestion/schema/nba-schemas';
 
 // =============================================================================
@@ -36,6 +36,11 @@ export interface TrainingConfig {
   learningRate: number;
   maxIterations: number;
   regularizationLambda: number;
+  algorithm: 'logistic-regression' | 'xgboost' | 'auto';
+
+  // Feature windows
+  teamHistoryGamesWindow: number;
+  h2hGamesWindow: number;
   
   // Performance thresholds
   minAccuracy: number;
@@ -80,7 +85,8 @@ export interface TrainingJob {
   };
   result?: {
     modelVersion: ModelVersion;
-    trainingResult: TrainingResult;
+    trainingResult: TrainingResult | XGBoostTrainingResult;
+    selectedAlgorithm: 'logistic-regression' | 'xgboost';
   };
   error?: string;
 }
@@ -188,6 +194,9 @@ export const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
   learningRate: 0.01,
   maxIterations: 5000,
   regularizationLambda: 0.01,
+  algorithm: 'auto',
+  teamHistoryGamesWindow: 20,
+  h2hGamesWindow: 8,
   minAccuracy: 0.55, // Better than coin flip
   minPrecision: 0.55,
   minRecall: 0.55,
@@ -227,6 +236,9 @@ export class TrainingService {
         // Only games that have scores (completed)
         homeScore: { not: null },
         awayScore: { not: null },
+      },
+      orderBy: {
+        gameDate: 'asc',
       },
       include: {
         boxScore: true,
@@ -313,7 +325,7 @@ export class TrainingService {
             awayScore: { not: null },
           },
           orderBy: { gameDate: 'desc' },
-          take: 10,
+          take: this.config.teamHistoryGamesWindow,
           include: { boxScore: true },
         });
 
@@ -328,13 +340,13 @@ export class TrainingService {
             awayScore: { not: null },
           },
           orderBy: { gameDate: 'desc' },
-          take: 10,
+          take: this.config.teamHistoryGamesWindow,
           include: { boxScore: true },
         });
         
         // Calculate real features from games
-        const homeFeatures = this.calculateTeamFeaturesFromGames(homeTeamGames, game.homeTeamId);
-        const awayFeatures = this.calculateTeamFeaturesFromGames(awayTeamGames, game.awayTeamId);
+        const homeFeatures = this.calculateTeamFeaturesFromGames(homeTeamGames, game.homeTeamId, game.matchDate);
+        const awayFeatures = this.calculateTeamFeaturesFromGames(awayTeamGames, game.awayTeamId, game.matchDate);
         
         // Get head-to-head games
         const h2hGames = await prisma.game.findMany({
@@ -348,7 +360,7 @@ export class TrainingService {
             awayScore: { not: null },
           },
           orderBy: { gameDate: 'desc' },
-          take: 5,
+          take: this.config.h2hGamesWindow,
         });
         
         const h2hStats = this.calculateH2HStats(h2hGames, game.homeTeamId);
@@ -404,19 +416,13 @@ export class TrainingService {
    * Split data into train/test sets
    */
   private splitData(examples: TrainingExample[]): { train: TrainingExample[]; test: TrainingExample[] } {
-    // Deterministic Fisher-Yates shuffle for reproducible train/test splits.
-    const shuffled = [...examples];
-    const nextRandom = this.createSeededRng(this.config.shuffleSeed);
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(nextRandom() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    
-    const splitIndex = Math.floor(shuffled.length * this.config.trainTestSplit);
+    // Time-aware split (chronological): train on older games, test on newer games.
+    const ordered = [...examples];
+    const splitIndex = Math.floor(ordered.length * this.config.trainTestSplit);
     
     return {
-      train: shuffled.slice(0, splitIndex),
-      test: shuffled.slice(splitIndex),
+      train: ordered.slice(0, splitIndex),
+      test: ordered.slice(splitIndex),
     };
   }
 
@@ -489,12 +495,61 @@ export class TrainingService {
     };
   }
 
-  private createSeededRng(seed: number): () => number {
-    let state = seed >>> 0;
-    return () => {
-      state = (1664525 * state + 1013904223) >>> 0;
-      return state / 4294967296;
+  private evaluateXGBoostModel(
+    model: XGBoostModel,
+    testExamples: TrainingExample[]
+  ): ModelMetrics {
+    let truePositives = 0;
+    let trueNegatives = 0;
+    let falsePositives = 0;
+    let falseNegatives = 0;
+    let logLoss = 0;
+    const predictions: { prob: number; actual: number }[] = [];
+
+    for (const example of testExamples) {
+      const result = model.predict(example.features);
+      const predicted = result.homeWinProbability >= 0.5 ? 1 : 0;
+      const actual = example.label;
+
+      if (predicted === 1 && actual === 1) truePositives++;
+      else if (predicted === 0 && actual === 0) trueNegatives++;
+      else if (predicted === 1 && actual === 0) falsePositives++;
+      else if (predicted === 0 && actual === 1) falseNegatives++;
+
+      const epsilon = 1e-15;
+      const prob = result.homeWinProbability;
+      logLoss -= actual * Math.log(prob + epsilon) + (1 - actual) * Math.log(1 - prob + epsilon);
+      predictions.push({ prob, actual });
+    }
+
+    const total = testExamples.length;
+    const accuracy = (truePositives + trueNegatives) / total;
+    const precision = truePositives / (truePositives + falsePositives) || 0;
+    const recall = truePositives / (truePositives + falseNegatives) || 0;
+    const f1Score = 2 * (precision * recall) / (precision + recall) || 0;
+    const auc = calculateAUC(predictions);
+    const calibrationError = this.calculateCalibrationError(predictions);
+
+    return {
+      accuracy,
+      precision,
+      recall,
+      f1Score,
+      logLoss: logLoss / total,
+      auc,
+      calibrationError,
     };
+  }
+
+  private computeSelectionScore(metrics: ModelMetrics): number {
+    // Higher is better. Penalize loss and calibration drift.
+    return (
+      metrics.accuracy * 0.45 +
+      metrics.f1Score * 0.2 +
+      metrics.auc * 0.2 -
+      metrics.logLoss * 0.1 -
+      metrics.calibrationError * 0.05
+    );
   }
 
   /**
@@ -567,18 +622,39 @@ export class TrainingService {
       job.progress.current = 3;
       const { train, test } = this.splitData(examples);
 
-      const model = new LogisticRegressionModel({
+      const logisticModel = new LogisticRegressionModel({
         learningRate: this.config.learningRate,
         maxIterations: this.config.maxIterations,
         regularizationLambda: this.config.regularizationLambda,
       });
+      const logisticTrainingResult = logisticModel.train(train);
+      const logisticMetrics = this.evaluateModel(logisticModel, test);
 
-      const trainingResult = model.train(train);
+      let selectedAlgorithm: 'logistic-regression' | 'xgboost' = 'logistic-regression';
+      let selectedModel: LogisticRegressionModel | XGBoostModel = logisticModel;
+      let selectedTrainingResult: TrainingResult | XGBoostTrainingResult = logisticTrainingResult;
+      let metrics = logisticMetrics;
+
+      const shouldTryXgboost = this.config.algorithm === 'xgboost' || this.config.algorithm === 'auto';
+      if (shouldTryXgboost) {
+        const xgboostModel = new XGBoostModel();
+        const xgTrainingResult = xgboostModel.train(train, test);
+        const xgMetrics = this.evaluateXGBoostModel(xgboostModel, test);
+
+        const logisticScore = this.computeSelectionScore(logisticMetrics);
+        const xgScore = this.computeSelectionScore(xgMetrics);
+
+        if (this.config.algorithm === 'xgboost' || xgScore >= logisticScore) {
+          selectedAlgorithm = 'xgboost';
+          selectedModel = xgboostModel;
+          selectedTrainingResult = xgTrainingResult;
+          metrics = xgMetrics;
+        }
+      }
 
       // Step 4: Evaluate
       job.progress.currentStep = 'Evaluating model';
       job.progress.current = 4;
-      const metrics = this.evaluateModel(model, test);
 
       // Validate metrics meet thresholds
       if (metrics.accuracy < this.config.minAccuracy) {
@@ -590,26 +666,27 @@ export class TrainingService {
       const modelVersion: ModelVersion = {
         id: `model-${Date.now()}`,
         version: `v${now.toISOString().split('T')[0].replace(/-/g, '')}-${Date.now().toString().slice(-6)}`,
-        algorithm: 'logistic-regression',
+        algorithm: selectedAlgorithm,
         createdAt: new Date(),
         trainingDataStart: startDate,
         trainingDataEnd: endDate,
         numTrainingSamples: train.length,
         numTestSamples: test.length,
         metrics,
-        weightsHash: this.hashWeights(trainingResult.weights),
+        weightsHash: this.hashModelState(selectedModel),
         isActive: false, // Needs manual activation
       };
 
       // Save model to database
-      await this.saveModel(modelVersion, model);
+      await this.saveModel(modelVersion, selectedModel);
 
       // Update job
       job.status = 'completed';
       job.completedAt = new Date();
       job.result = {
         modelVersion,
-        trainingResult,
+        trainingResult: selectedTrainingResult,
+        selectedAlgorithm,
       };
 
       return job;
@@ -624,9 +701,11 @@ export class TrainingService {
   /**
    * Save model to database
    */
-  private async saveModel(version: ModelVersion, model: LogisticRegressionModel): Promise<void> {
-    const weights = model.getWeights();
-    if (!weights) throw new Error('Model weights not available');
+  private async saveModel(
+    version: ModelVersion,
+    model: LogisticRegressionModel | XGBoostModel
+  ): Promise<void> {
+    const modelState = this.serializeModelState(model);
 
     // Store in database
     await prisma.mLModel.create({
@@ -647,17 +726,28 @@ export class TrainingService {
         auc: version.metrics.auc,
         calibrationError: version.metrics.calibrationError,
         weightsHash: version.weightsHash,
-        weights: weights as unknown as Prisma.JsonObject,
+        weights: modelState as unknown as Prisma.JsonObject,
         isActive: version.isActive,
       },
     });
   }
 
+  private serializeModelState(model: LogisticRegressionModel | XGBoostModel): unknown {
+    if (model instanceof LogisticRegressionModel) {
+      const weights = model.getWeights();
+      if (!weights) throw new Error('Model weights not available');
+      return weights;
+    }
+
+    return model.getState();
+  }
+
   /**
    * Hash weights for integrity check
    */
-  private hashWeights(weights: { bias: number; weights: number[] }): string {
-    const data = `${weights.bias}:${weights.weights.join(',')}`;
+  private hashModelState(model: LogisticRegressionModel | XGBoostModel): string {
+    const state = this.serializeModelState(model);
+    const data = JSON.stringify(state);
     let hash = 0;
     for (let i = 0; i < data.length; i++) {
       const char = data.charCodeAt(i);
@@ -788,7 +878,8 @@ export class TrainingService {
    */
   private calculateTeamFeaturesFromGames(
     games: HistoricalGameRow[],
-    teamId: number
+    teamId: number,
+    matchDate: Date
   ): CalculatedTeamFeatures {
     if (games.length === 0) {
       return {
@@ -832,11 +923,11 @@ export class TrainingService {
     const form = recentGames.length > 0 ? last5Wins / recentGames.length : 0.5;
 
     let restDays = 0;
-    if (games.length > 1) {
-      const latest = new Date(games[0].gameDate).getTime();
-      const previous = new Date(games[1].gameDate).getTime();
+    if (games.length > 0) {
+      const latestGameDate = new Date(games[0].gameDate).getTime();
+      const currentMatchDate = new Date(matchDate).getTime();
       const dayMs = 24 * 60 * 60 * 1000;
-      restDays = Math.max(0, Math.floor((latest - previous) / dayMs));
+      restDays = Math.max(0, Math.floor((currentMatchDate - latestGameDate) / dayMs));
     }
     
     // Calculate ratings (simplified)

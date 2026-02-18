@@ -69,13 +69,13 @@ export function useDecisions(options: UseDecisionsOptions = {}) {
 /**
  * Hook to fetch decisions with today's date as default
  */
-export function useTodayDecisions(enabled = true) {
-  return useDecisions({ enabled });
+export function useTodayDecisions(enabled = true, date?: string) {
+  return useDecisions({ enabled, date });
 }
 
 /**
  * Hook to fetch decisions by status
  */
-export function useDecisionsByStatus(status: string, enabled = true) {
-  return useDecisions({ status, enabled });
+export function useDecisionsByStatus(status: string, enabled = true, date?: string) {
+  return useDecisions({ status, enabled, date });
 }

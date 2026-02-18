@@ -6,19 +6,27 @@
 import { Suspense } from 'react';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
-import { DecisionList, DecisionListSkeleton } from '@/features/decisions/components';
+import { DecisionDateFilter, DecisionList, DecisionListSkeleton } from '@/features/decisions/components';
 import { fetchDecisionsServer } from '@/features/decisions/services/decision-service-server';
 import { GuardrailBannerWrapper } from '@/features/policy/components/GuardrailBannerWrapper';
 import { Ban } from 'lucide-react';
 
-export default async function NoBetPage() {
+interface NoBetPageProps {
+  searchParams?: Promise<{
+    date?: string;
+  }>;
+}
+
+export default async function NoBetPage({ searchParams }: NoBetPageProps) {
   const session = await getServerSession(authOptions);
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedDate = resolvedSearchParams?.date;
 
   let initialDecisions = null;
 
   if (session) {
     try {
-      const response = await fetchDecisionsServer();
+      const response = await fetchDecisionsServer(selectedDate);
       initialDecisions = response.data?.filter((d) => d.status === 'NO_BET' || d.status === 'HARD_STOP') || [];
     } catch (error) {
       console.error('[NoBetPage] Failed to prefetch decisions:', error);
@@ -40,10 +48,13 @@ export default async function NoBetPage() {
           </p>
         </div>
 
+        <DecisionDateFilter testId="nobet-date-filter" statuses={['NO_BET', 'HARD_STOP']} />
+
         <Suspense fallback={<DecisionListSkeleton count={6} />}>
           <DecisionList
             initialData={initialDecisions || undefined}
             filterStatuses={['NO_BET', 'HARD_STOP']}
+            selectedDate={selectedDate}
           />
         </Suspense>
       </div>

@@ -15,6 +15,7 @@ interface TrainOptions {
   startDate: Date;
   endDate: Date;
   activate: boolean;
+  algorithm?: 'logistic-regression' | 'xgboost' | 'auto';
 }
 
 function parseArgs(): TrainOptions {
@@ -23,6 +24,7 @@ function parseArgs(): TrainOptions {
     startDate: new Date('2014-10-01T00:00:00.000Z'), // Default: full historical window
     endDate: new Date(), // Default: now
     activate: false,
+    algorithm: 'auto',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -36,6 +38,13 @@ function parseArgs(): TrainOptions {
       case '--activate':
         options.activate = true;
         break;
+      case '--algorithm': {
+        const value = args[++i] as TrainOptions['algorithm'];
+        if (value === 'logistic-regression' || value === 'xgboost' || value === 'auto') {
+          options.algorithm = value;
+        }
+        break;
+      }
     }
   }
 
@@ -53,6 +62,7 @@ async function trainModel(): Promise<void> {
   console.log(`  Start Date: ${options.startDate.toISOString().split('T')[0]}`);
   console.log(`  End Date: ${options.endDate.toISOString().split('T')[0]}`);
   console.log(`  Auto-activate: ${options.activate}`);
+  console.log(`  Algorithm: ${options.algorithm}`);
   console.log(`  Learning Rate: ${DEFAULT_TRAINING_CONFIG.learningRate}`);
   console.log(`  Max Iterations: ${DEFAULT_TRAINING_CONFIG.maxIterations}`);
   console.log(`  Min Training Samples: ${DEFAULT_TRAINING_CONFIG.minTrainingSamples}`);
@@ -62,13 +72,15 @@ async function trainModel(): Promise<void> {
 
   // Initialize services
   const featureService = createFeatureEngineeringService();
-  const trainingService = createTrainingService(featureService);
+  const trainingServiceWithAlgo = createTrainingService(featureService, {
+    algorithm: options.algorithm,
+  });
 
   // Set up progress monitoring
     // Simple progress logging without stdout manipulation
     let lastProgress = 0;
     const progressInterval = setInterval(() => {
-      const job = trainingService.getJobStatus();
+      const job = trainingServiceWithAlgo.getJobStatus();
       if (job && job.status === 'running' && job.progress.current !== lastProgress) {
         lastProgress = job.progress.current;
         console.log(`Progress: Step ${job.progress.current}/${job.progress.total} - ${job.progress.currentStep}`);
@@ -80,7 +92,7 @@ async function trainModel(): Promise<void> {
     console.log('Starting training job...');
     console.log();
 
-    const job = await trainingService.startTraining(options.startDate, options.endDate);
+    const job = await trainingServiceWithAlgo.startTraining(options.startDate, options.endDate);
 
     clearInterval(progressInterval);
     console.log();
@@ -99,10 +111,19 @@ async function trainModel(): Promise<void> {
       console.log(`  Created: ${modelVersion.createdAt.toISOString()}`);
       console.log();
       console.log('Training Stats:');
-      console.log(`  Iterations: ${trainingResult.iterations}`);
-      console.log(`  Converged: ${trainingResult.converged ? 'Yes' : 'No'}`);
-      console.log(`  Final Loss: ${trainingResult.finalLoss.toFixed(6)}`);
-      console.log(`  Training Accuracy: ${(trainingResult.accuracy * 100).toFixed(2)}%`);
+      console.log(`  Selected Algorithm: ${job.result.selectedAlgorithm}`);
+      if ('converged' in trainingResult) {
+        console.log(`  Iterations: ${trainingResult.iterations}`);
+        console.log(`  Converged: ${trainingResult.converged ? 'Yes' : 'No'}`);
+        console.log(`  Final Loss: ${trainingResult.finalLoss.toFixed(6)}`);
+        console.log(`  Training Accuracy: ${(trainingResult.accuracy * 100).toFixed(2)}%`);
+      } else {
+        console.log(`  Iterations: ${trainingResult.iterations}`);
+        const bestVal = trainingResult.valLosses.length > 0
+          ? Math.min(...trainingResult.valLosses)
+          : Math.min(...trainingResult.trainLosses);
+        console.log(`  Best Validation Loss: ${bestVal.toFixed(6)}`);
+      }
       console.log();
       console.log('Test Metrics:');
       console.log(`  Accuracy: ${(modelVersion.metrics.accuracy * 100).toFixed(2)}%`);
@@ -116,7 +137,7 @@ async function trainModel(): Promise<void> {
 
       if (options.activate) {
         console.log('Activating model...');
-        await trainingService.activateModel(modelVersion.id);
+        await trainingServiceWithAlgo.activateModel(modelVersion.id);
         console.log('Model activated successfully!');
         console.log();
         console.log('The model is now active and will be used for predictions.');

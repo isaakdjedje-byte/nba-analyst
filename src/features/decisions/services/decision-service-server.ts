@@ -22,6 +22,37 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function getDayRange(date: Date): { start: Date; endExclusive: Date } {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const endExclusive = new Date(start);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  return { start, endExclusive };
+}
+
+function parseDateParamToDayRange(dateParam: string): { start: Date; endExclusive: Date } {
+  const datePart = dateParam.split('T')[0] ?? dateParam;
+  const match = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error(`Invalid date format: ${dateParam}`);
+  }
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10) - 1;
+  const day = Number.parseInt(match[3], 10);
+  const localDate = new Date(year, month, day, 0, 0, 0, 0);
+
+  if (
+    Number.isNaN(localDate.getTime()) ||
+    localDate.getFullYear() !== year ||
+    localDate.getMonth() !== month ||
+    localDate.getDate() !== day
+  ) {
+    throw new Error(`Invalid date value: ${dateParam}`);
+  }
+
+  return getDayRange(localDate);
+}
+
 function toIso(value: unknown): string | null {
   const date = value instanceof Date ? value : new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
@@ -176,16 +207,17 @@ export async function fetchDecisionsServer(
   try {
     // Determine date range
     let dateStart: Date;
-    let dateEnd: Date;
+    let dateEndExclusive: Date;
 
     if (date) {
-      const parsedDate = new Date(date);
-      dateStart = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 0, 0, 0);
-      dateEnd = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
+      const parsed = parseDateParamToDayRange(date);
+      dateStart = parsed.start;
+      dateEndExclusive = parsed.endExclusive;
     } else {
       const baseDate = (await getDefaultDecisionDate()) ?? new Date();
-      dateStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0);
-      dateEnd = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59, 999);
+      const range = getDayRange(baseDate);
+      dateStart = range.start;
+      dateEndExclusive = range.endExclusive;
     }
 
     // Fetch from database
@@ -193,7 +225,7 @@ export async function fetchDecisionsServer(
       where: {
         matchDate: {
           gte: dateStart,
-          lte: dateEnd,
+          lt: dateEndExclusive,
         },
         NOT: {
           modelVersion: {

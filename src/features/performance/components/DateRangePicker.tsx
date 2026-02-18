@@ -18,6 +18,36 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function getStartOfCurrentWeek(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  const day = copy.getDay();
+  const diffToMonday = (day + 6) % 7;
+  copy.setDate(copy.getDate() - diffToMonday);
+  return copy;
+}
+
+function getStartOfCurrentMonth(date: Date): Date {
+  const copy = new Date(date);
+  copy.setDate(1);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function getEndOfNextThreeMonths(date: Date): Date {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + 3, 0);
+  copy.setHours(23, 59, 59, 999);
+  return copy;
+}
+
+function getStartOfLastThreeMonths(date: Date): Date {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() - 3);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
 interface DateRangePickerProps {
   fromDate: string;
   toDate: string;
@@ -41,15 +71,26 @@ export function DateRangePicker({
     onDateChange(fromDate, newToDate);
   }, [onDateChange, fromDate]);
 
-  const handlePreset = useCallback((days: number) => {
-    const toDate = new Date();
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - days);
-    
-    onDateChange(
-      formatLocalDate(fromDate),
-      formatLocalDate(toDate)
-    );
+  const handlePreset = useCallback((preset: 'week' | 'month' | 'next-3-months' | 'last-3-months') => {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+
+    if (preset === 'week') {
+      onDateChange(formatLocalDate(getStartOfCurrentWeek(now)), formatLocalDate(now));
+      return;
+    }
+
+    if (preset === 'month') {
+      onDateChange(formatLocalDate(getStartOfCurrentMonth(now)), formatLocalDate(now));
+      return;
+    }
+
+    if (preset === 'last-3-months') {
+      onDateChange(formatLocalDate(getStartOfLastThreeMonths(now)), formatLocalDate(now));
+      return;
+    }
+
+    onDateChange(formatLocalDate(getStartOfCurrentMonth(now)), formatLocalDate(getEndOfNextThreeMonths(now)));
   }, [onDateChange]);
 
   return (
@@ -69,27 +110,35 @@ export function DateRangePicker({
         <div className="flex gap-1" role="group" aria-label="Preselection de période rapide">
           <button
             type="button"
-            onClick={() => handlePreset(7)}
+            onClick={() => handlePreset('week')}
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             data-testid={testId ? `${testId}-preset-7d` : undefined}
           >
-            7 jours
+            Semaine actuelle
           </button>
           <button
             type="button"
-            onClick={() => handlePreset(30)}
+            onClick={() => handlePreset('month')}
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             data-testid={testId ? `${testId}-preset-30d` : undefined}
           >
-            30 jours
+            Mois actuel
           </button>
           <button
             type="button"
-            onClick={() => handlePreset(90)}
+            onClick={() => handlePreset('last-3-months')}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            data-testid={testId ? `${testId}-preset-last-3m` : undefined}
+          >
+            3 derniers mois
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreset('next-3-months')}
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             data-testid={testId ? `${testId}-preset-90d` : undefined}
           >
-            90 jours
+            3 prochains mois
           </button>
         </div>
 
@@ -117,7 +166,6 @@ export function DateRangePicker({
             value={toDate}
             onChange={handleToDateChange}
             min={fromDate}
-            max={formatLocalDate(new Date())}
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             data-testid={testId ? `${testId}-to` : undefined}
           />

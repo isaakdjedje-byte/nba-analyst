@@ -11,6 +11,7 @@ const {
   policyDecisionCountMock,
   policyDecisionGroupByMock,
   policyDecisionFindManyMock,
+  predictionFindManyMock,
   predictionLogCountMock,
 } = vi.hoisted(() => ({
   cacheGetMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   policyDecisionCountMock: vi.fn(),
   policyDecisionGroupByMock: vi.fn(),
   policyDecisionFindManyMock: vi.fn(),
+  predictionFindManyMock: vi.fn(),
   predictionLogCountMock: vi.fn(),
 }));
 
@@ -37,6 +39,9 @@ vi.mock('@/server/db/client', () => ({
       count: policyDecisionCountMock,
       groupBy: policyDecisionGroupByMock,
       findMany: policyDecisionFindManyMock,
+    },
+    prediction: {
+      findMany: predictionFindManyMock,
     },
     predictionLog: {
       count: predictionLogCountMock,
@@ -59,6 +64,7 @@ describe('Performance Metrics Service', () => {
     policyDecisionCountMock.mockReset();
     policyDecisionGroupByMock.mockReset();
     policyDecisionFindManyMock.mockReset();
+    predictionFindManyMock.mockReset();
     predictionLogCountMock.mockReset();
 
     cacheGetMock.mockResolvedValue(null);
@@ -73,6 +79,10 @@ describe('Performance Metrics Service', () => {
     policyDecisionFindManyMock.mockResolvedValue([
       { predictionId: 'pred-1' },
       { predictionId: 'pred-2' },
+    ]);
+    predictionFindManyMock.mockResolvedValue([
+      { id: 'pred-1' },
+      { id: 'pred-2' },
     ]);
     predictionLogCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
   });
@@ -136,8 +146,8 @@ describe('Performance Metrics Service', () => {
       await calculatePerformanceMetrics({ fromDate: '2026-01-01', toDate: '2026-01-31' });
       await calculatePerformanceMetrics({ fromDate: '2026-02-01', toDate: '2026-02-28' });
 
-      expect(cacheGetMock).toHaveBeenNthCalledWith(1, 'performance:2026-01-01:2026-01-31');
-      expect(cacheGetMock).toHaveBeenNthCalledWith(2, 'performance:2026-02-01:2026-02-28');
+      expect(cacheGetMock).toHaveBeenNthCalledWith(1, 'performance:2026-01-01:2026-01-31:v2-all-seasons');
+      expect(cacheGetMock).toHaveBeenNthCalledWith(2, 'performance:2026-02-01:2026-02-28:v2-all-seasons');
       expect(cacheSetMock).toHaveBeenCalledTimes(2);
     });
   });

@@ -54,7 +54,7 @@ export async function calculatePerformanceMetrics(
   // Generate cache key from date range
   const fromDateStr = formatLocalDate(fromDate);
   const toDateStr = formatLocalDate(toDate);
-  const cacheKey = performanceKeys.metrics(fromDateStr, toDateStr);
+  const cacheKey = `${performanceKeys.metrics(fromDateStr, toDateStr)}:v2-all-seasons`;
 
   // Cache-aside pattern: try cache first
   const cachedMetrics = await metricsCache.get<PerformanceMetrics>(cacheKey);
@@ -79,66 +79,71 @@ export async function calculatePerformanceMetrics(
  * @returns PerformanceMetrics
  */
 async function fetchMetricsFromDB(fromDate: Date, toDate: Date): Promise<PerformanceMetrics> {
-  const where = {
+  const decisionWhere = {
     matchDate: {
       gte: fromDate,
       lte: toDate,
     },
-    NOT: {
-      modelVersion: {
-        startsWith: 'season-end-',
-      },
+  };
+
+  const predictionWhere = {
+    matchDate: {
+      gte: fromDate,
+      lte: toDate,
     },
+    winnerPrediction: { not: null as null },
   };
 
   const [totalDecisions, groupedByStatus] = await Promise.all([
-    prisma.policyDecision.count({ where }),
+    prisma.policyDecision.count({ where: decisionWhere }),
     prisma.policyDecision.groupBy({
       by: ['status'],
-      where,
+      where: decisionWhere,
       _count: {
         status: true,
       },
     }),
   ]);
 
-  const picksCount = groupedByStatus.find((g) => g.status === 'PICK')?._count.status ?? 0;
+  const decisionPicksCount = groupedByStatus.find((g) => g.status === 'PICK')?._count.status ?? 0;
   const noBetCount = groupedByStatus.find((g) => g.status === 'NO_BET')?._count.status ?? 0;
   const hardStopCount = groupedByStatus.find((g) => g.status === 'HARD_STOP')?._count.status ?? 0;
 
-  const pickedPredictionIds = await prisma.policyDecision.findMany({
-    where: {
-      ...where,
-      status: 'PICK',
-    },
+  const pickedPredictions = await prisma.prediction.findMany({
+    where: predictionWhere,
     select: {
-      predictionId: true,
+      id: true,
     },
   });
 
-  const predictionIds = pickedPredictionIds.map((row) => row.predictionId);
+  const predictionIds = pickedPredictions.map((row) => row.id);
+  const historicalPredictionsCount = predictionIds.length;
+  const picksCount = decisionPicksCount;
 
   const [resolvedPicksCount, wonPicksCount] = predictionIds.length > 0
     ? await Promise.all([
-        prisma.predictionLog.count({
-          where: {
-            predictionId: { in: predictionIds },
-            resolvedAt: { not: null },
-          },
-        }),
-        prisma.predictionLog.count({
-          where: {
-            predictionId: { in: predictionIds },
-            correct: true,
-          },
-        }),
-      ])
+      prisma.predictionLog.count({
+        where: {
+          predictionId: { in: predictionIds },
+          resolvedAt: { not: null },
+        },
+      }),
+      prisma.predictionLog.count({
+        where: {
+          predictionId: { in: predictionIds },
+          resolvedAt: { not: null },
+          correct: true,
+        },
+      }),
+    ])
     : [0, 0];
 
-  const pendingPicksCount = Math.max(picksCount - resolvedPicksCount, 0);
+  const pendingPicksCount = Math.max(historicalPredictionsCount - resolvedPicksCount, 0);
   const pickWinRate = resolvedPicksCount > 0
     ? Math.round((wonPicksCount / resolvedPicksCount) * 1000) / 10
     : null;
+
+  const totalInScope = Math.max(totalDecisions, historicalPredictionsCount);
 
   // Keep existing response field for backward compatibility.
   const accuracyRate = pickWinRate ?? 0;
@@ -152,7 +157,7 @@ async function fetchMetricsFromDB(fromDate: Date, toDate: Date): Promise<Perform
     picksCount,
     noBetCount,
     hardStopCount,
-    totalDecisions,
+    totalDecisions: totalInScope,
   };
 }
 

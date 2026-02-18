@@ -13,7 +13,7 @@
 import { Suspense } from 'react';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
-import { DecisionList, DecisionListSkeleton } from '@/features/decisions/components';
+import { DecisionDateFilter, DecisionList, DecisionListSkeleton } from '@/features/decisions/components';
 import { fetchDecisionsServer } from '@/features/decisions/services/decision-service-server';
 import { GuardrailBannerWrapper } from '@/features/policy/components/GuardrailBannerWrapper';
 import type { Decision } from '@/features/decisions/types';
@@ -42,16 +42,24 @@ function LastUpdateTimestamp({ initialData }: { initialData: Decision[] | null }
   );
 }
 
-export default async function PicksPage() {
+interface PicksPageProps {
+  searchParams?: Promise<{
+    date?: string;
+  }>;
+}
+
+export default async function PicksPage({ searchParams }: PicksPageProps) {
   // Verify authentication (RBAC handled by API)
   const session = await getServerSession(authOptions);
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedDate = resolvedSearchParams?.date;
   
   // Pre-fetch decisions on server for faster initial render
   let initialDecisions = null;
   
   if (session) {
     try {
-      const response = await fetchDecisionsServer();
+      const response = await fetchDecisionsServer(selectedDate);
       initialDecisions = response.data;
     } catch (error) {
       // Log error but don't fail - client will retry
@@ -104,11 +112,14 @@ export default async function PicksPage() {
           </p>
         </div>
 
+        <DecisionDateFilter testId="picks-date-filter" statuses={['PICK']} />
+
         {/* Decision List with Suspense - AC6: Virtual scrolling for > 20 items */}
         <Suspense fallback={<DecisionListSkeleton count={6} />}>
           <DecisionList
             initialData={initialDecisions || undefined}
             filterStatuses={['PICK']}
+            selectedDate={selectedDate}
           />
         </Suspense>
       </div>

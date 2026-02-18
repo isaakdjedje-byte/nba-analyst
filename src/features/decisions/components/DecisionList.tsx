@@ -22,15 +22,16 @@ import type { Decision, DecisionStatus } from '../types';
 interface DecisionListProps {
   initialData?: Decision[];
   filterStatuses?: DecisionStatus[];
+  selectedDate?: string;
 }
 
 // AC6: Hauteur estimée d'une carte sur mobile
 const ESTIMATED_ITEM_SIZE = 140;
 
-export function DecisionList({ initialData, filterStatuses }: DecisionListProps) {
+export function DecisionList({ initialData, filterStatuses, selectedDate }: DecisionListProps) {
   const singleStatus = filterStatuses && filterStatuses.length === 1 ? filterStatuses[0] : null;
-  const singleStatusQuery = useDecisionsByStatus(singleStatus ?? 'PICK', Boolean(singleStatus));
-  const allStatusesQuery = useTodayDecisions(!singleStatus);
+  const singleStatusQuery = useDecisionsByStatus(singleStatus ?? 'PICK', Boolean(singleStatus), selectedDate);
+  const allStatusesQuery = useTodayDecisions(!singleStatus, selectedDate);
   const queryResult = singleStatus ? singleStatusQuery : allStatusesQuery;
   const { data, isLoading, error, refetch } = queryResult;
   const handleDecisionClick = useCallback(() => {}, []);

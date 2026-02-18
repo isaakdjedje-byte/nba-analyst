@@ -98,17 +98,21 @@ export async function fetchDecisionsWithRetry(
 }
 
 /**
- * Format match time for display
+ * Format full match datetime for display
  * @param startTime ISO datetime string
- * @returns Formatted time string
+ * @returns Formatted datetime string
  */
 export function formatMatchTime(startTime: string | null): string {
-  if (!startTime) return 'TBD';
+  if (!startTime) return 'Date inconnue';
   
   const date = new Date(startTime);
-  if (isNaN(date.getTime())) return 'TBD';
+  if (isNaN(date.getTime())) return 'Date inconnue';
 
   return new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
