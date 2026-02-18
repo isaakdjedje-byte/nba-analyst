@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Image from "next/image";
 
 interface MFASetupData {
@@ -17,6 +18,14 @@ export default function MFASetupPage() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<"setup" | "verify" | "complete">("setup");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { update } = useSession();
+
+  const callbackUrlRaw = searchParams.get("callbackUrl");
+  const callbackUrl =
+    callbackUrlRaw && callbackUrlRaw.startsWith("/") && !callbackUrlRaw.startsWith("//")
+      ? callbackUrlRaw
+      : "/settings/mfa";
 
   useEffect(() => {
     // Fetch MFA setup data
@@ -53,6 +62,7 @@ export default function MFASetupPage() {
 
       if (response.ok && data.success) {
         setBackupCodes(data.backupCodes || []);
+        await update();
         setStep("complete");
       } else {
         setError(data.message || "Invalid verification code");
@@ -65,7 +75,7 @@ export default function MFASetupPage() {
   };
 
   const handleComplete = () => {
-    router.push("/settings/mfa");
+    router.push(callbackUrl);
   };
 
   if (loading && !setupData) {
@@ -203,7 +213,7 @@ export default function MFASetupPage() {
                   onClick={handleComplete}
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                  Go to MFA Settings
+                  Continue
                 </button>
               </div>
             )}

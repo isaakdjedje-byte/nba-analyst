@@ -104,9 +104,16 @@ export const authOptions: NextAuthOptions = {
         token.requiresMfa = mfaData.requiresMfa;
       }
 
-      // Handle MFA verification callback (triggered after MFA step)
-      if (trigger === "update" && token.requiresMfa) {
-        token.mfaVerified = true;
+      // Handle session update callback (e.g. after MFA setup/verification)
+      // Refresh MFA state from DB so middleware sees latest token claims immediately.
+      if (trigger === "update" && token.sub && token.role) {
+        const mfaData = await checkMFARequirement(
+          token.sub as string,
+          token.role as string
+        );
+        token.mfaEnabled = mfaData.mfaEnabled;
+        token.mfaVerified = mfaData.mfaVerified;
+        token.requiresMfa = mfaData.requiresMfa;
       }
 
       // C2: Validate token iat exists and prevent replay attacks
