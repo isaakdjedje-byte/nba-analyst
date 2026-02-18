@@ -31,7 +31,7 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
 
       {/* Navigation tabs - hidden on mobile, visible on md+ */}
       <div className="hidden md:block">
-        <TabNavigation />
+        <TabNavigation role={user.role} />
       </div>
 
       {/* Main content area - padding bottom for mobile nav */}
@@ -42,7 +42,7 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
       </main>
 
       {/* Mobile bottom navigation - visible on mobile only */}
-      <MobileNavigation />
+      <MobileNavigation role={user.role} />
     </div>
   );
 }

@@ -36,6 +36,23 @@ interface DashboardData {
     observed: number;
     count: number;
   }[];
+  latestModel: {
+    version: string;
+    algorithm: string;
+    trainedAt: string;
+    activatedAt: string | null;
+    trainingDataStart: string;
+    trainingDataEnd: string;
+    numTrainingSamples: number;
+    numTestSamples: number;
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1Score: number;
+    logLoss: number;
+    auc: number;
+    calibrationError: number;
+  } | null;
   health: {
     healthy: boolean;
     alerts: string[];
@@ -110,23 +127,23 @@ export default function MLDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">ML Monitoring Dashboard</h1>
-              <p className="text-sm text-gray-500">Real-time model performance and health</p>
+              <h1 className="text-2xl font-bold">ML Monitoring Dashboard</h1>
+              <p className="text-sm text-slate-200">Real-time model performance, drift, and production health</p>
             </div>
             <div className="flex items-center space-x-4">
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                data?.health?.healthy ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                data?.health?.healthy ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-300/30' : 'bg-rose-500/20 text-rose-100 border border-rose-300/30'
               }`}>
                 {data?.health?.healthy ? 'Healthy' : 'Issues'}
               </span>
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                className="px-4 py-2 rounded border border-white/20 bg-white/10 text-white hover:bg-white/20"
               >
                 Refresh
               </button>
@@ -136,6 +153,57 @@ export default function MLDashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Latest Active Model */}
+        {data?.latestModel && (
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Latest Active Model</h2>
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-slate-500">Version</p>
+                  <p className="text-xl font-semibold text-slate-900">{data.latestModel.version}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-slate-500">Algorithm</p>
+                  <p className="text-base font-medium text-slate-800">{data.latestModel.algorithm}</p>
+                </div>
+              </div>
+              <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div><p className="text-slate-500">Accuracy</p><p className="font-semibold text-slate-900">{(data.latestModel.accuracy * 100).toFixed(2)}%</p></div>
+                <div><p className="text-slate-500">F1 Score</p><p className="font-semibold text-slate-900">{(data.latestModel.f1Score * 100).toFixed(2)}%</p></div>
+                <div><p className="text-slate-500">AUC</p><p className="font-semibold text-slate-900">{data.latestModel.auc.toFixed(4)}</p></div>
+                <div><p className="text-slate-500">Calibration Error</p><p className="font-semibold text-slate-900">{data.latestModel.calibrationError.toFixed(4)}</p></div>
+              </div>
+              <p className="mt-4 text-xs text-slate-500">
+                Training window: {new Date(data.latestModel.trainingDataStart).toLocaleDateString()} - {new Date(data.latestModel.trainingDataEnd).toLocaleDateString()} | Samples: {data.latestModel.numTrainingSamples.toLocaleString()} train / {data.latestModel.numTestSamples.toLocaleString()} test
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* Daily Metrics */}
+        {data?.dailyMetrics && data.dailyMetrics.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Daily ML Results (Last 7 Days)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {data.dailyMetrics.slice(-4).map((row, index) => {
+                const day = typeof row.date === 'string' ? new Date(row.date).toLocaleDateString() : 'N/A';
+                const total = Number(row.totalPredictions ?? 0);
+                const resolved = Number(row.resolvedCount ?? 0);
+                const accuracy = Number(row.accuracy ?? 0);
+                return (
+                  <div key={index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">{day}</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{(accuracy * 100).toFixed(1)}%</p>
+                    <p className="text-sm text-slate-600">Accuracy</p>
+                    <p className="mt-3 text-xs text-slate-500">{resolved} resolved / {total} predictions</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* System Health */}
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">System Health</h2>

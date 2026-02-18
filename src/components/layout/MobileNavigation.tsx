@@ -21,7 +21,7 @@ interface NavItem {
   testId: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
+const BASE_NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/picks', label: 'Picks', icon: Trophy, testId: 'mobile-nav-link-picks' },
   { href: '/dashboard/no-bet', label: 'No-Bet', icon: Ban, testId: 'mobile-nav-link-no-bet' },
   { href: '/dashboard/performance', label: 'Performance', icon: TrendingUp, testId: 'mobile-nav-link-performance' },
@@ -30,11 +30,23 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/settings', label: 'Paramètres', icon: Settings, testId: 'mobile-nav-link-settings' },
 ];
 
-export function MobileNavigation() {
+const ADMIN_NAV_ITEM: NavItem = {
+  href: '/admin/ml',
+  label: 'ML Monitor',
+  icon: TrendingUp,
+  testId: 'mobile-nav-link-ml-monitor',
+};
+
+interface MobileNavigationProps {
+  role?: string;
+}
+
+export function MobileNavigation({ role }: MobileNavigationProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const navItems = role === 'admin' || role === 'ops' ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
 
   const isActive = (href: string): boolean => {
     return pathname?.startsWith(href) ?? false;
@@ -171,7 +183,7 @@ export function MobileNavigation() {
         {/* Navigation Links */}
         <nav className="p-4" role="navigation" aria-label="Navigation mobile">
           <ul className="space-y-2">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const active = isActive(item.href);
               const Icon = item.icon;
 

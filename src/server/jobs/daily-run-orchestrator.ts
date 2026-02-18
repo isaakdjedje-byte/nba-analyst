@@ -31,6 +31,8 @@ import { processDailyRun, DailyRunJobConfig } from '@/jobs/daily-run-job';
 import { createFingerprintsFromIngestion } from '@/server/audit/fingerprint-utils';
 import type { DataSourceFingerprints } from '@/server/audit/types';
 import { getPredictionService, PredictionInput as MLPredictionInput } from '@/server/ml/prediction/prediction-service';
+import { createMonitoringService } from '@/server/ml/monitoring/monitoring-service';
+import { resolvePredictionOutcomes } from '@/server/ml/monitoring/outcome-resolution-service';
 
 export interface PipelineConfig {
   /** Run ID in database */
@@ -63,6 +65,7 @@ export interface PipelineResult {
     totalDuration: number;
   };
   qualityAssessment?: DataQualityAssessment;
+  outcomesResolved?: number;
 }
 
 interface IngestionGameRecord {
@@ -74,6 +77,8 @@ interface IngestionGameRecord {
   awayTeam?: { id?: number; name?: string };
   [key: string]: unknown;
 }
+
+type MonitoringRecorder = ReturnType<typeof createMonitoringService>;
 
 type CreatedPrediction = Awaited<ReturnType<typeof prisma.prediction.create>>;
 
@@ -106,6 +111,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
   let ingestionService: IngestionService | null = null;
   let cacheService: CacheService | null = null;
   let qualityAssessment: DataQualityAssessment | undefined;
+  let outcomesResolved = 0;
   
   try {
     // ============================================
@@ -204,14 +210,26 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
     } else {
       console.log('[Pipeline] Phase 2: ML Inference');
       const mlStart = Date.now();
+
+      const monitoring = createMonitoringService();
       
       // Generate predictions for today's matches
-      predictionsCount = await generatePredictions(runId, runDate, traceId);
+      predictionsCount = await generatePredictions(runId, runDate, traceId, monitoring);
       
       mlInferenceDuration = Date.now() - mlStart;
       
       console.log(`[Pipeline] ML inference completed in ${mlInferenceDuration}ms`);
       console.log(`[Pipeline] Generated ${predictionsCount} predictions`);
+
+      // Resolve outcomes for already completed games to keep monitoring metrics fresh.
+      const outcomeResolution = await resolvePredictionOutcomes(1000);
+      outcomesResolved = outcomeResolution.resolved;
+      if (outcomeResolution.errors > 0) {
+        errors.push(`Outcome resolution errors: ${outcomeResolution.errors}`);
+      }
+      console.log(
+        `[Pipeline] Outcome resolution: resolved=${outcomeResolution.resolved}, skipped=${outcomeResolution.skipped}, errors=${outcomeResolution.errors}`
+      );
     }
     
     // ============================================
@@ -312,6 +330,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
         totalDuration,
       },
       qualityAssessment,
+      outcomesResolved,
     };
     
   } catch (error) {
@@ -341,6 +360,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
         publicationDuration,
         totalDuration,
       },
+      outcomesResolved,
     };
   }
 }
@@ -352,7 +372,12 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
  * 2. Generate ML predictions using a simple algorithm (or call external ML service)
  * 3. Store predictions in database for policy evaluation
  */
-async function generatePredictions(runId: string, runDate: Date, traceId: string): Promise<number> {
+async function generatePredictions(
+  runId: string,
+  runDate: Date,
+  traceId: string,
+  monitoring: MonitoringRecorder
+): Promise<number> {
   console.log(`[Pipeline] Generating predictions for ${runDate.toISOString().split('T')[0]}`);
   
   try {
@@ -407,7 +432,7 @@ async function generatePredictions(runId: string, runDate: Date, traceId: string
           continue;
         }
         
-        const prediction = await generateMLPrediction(game, systemUser.id, runId, traceId);
+        const prediction = await generateMLPrediction(game, systemUser.id, runId, traceId, monitoring);
         
         if (prediction) {
           predictionsCreated++;
@@ -436,7 +461,8 @@ async function generateMLPrediction(
   game: IngestionGameRecord,
   userId: string,
   runId: string,
-  traceId: string
+  traceId: string,
+  monitoring: MonitoringRecorder
 ): Promise<CreatedPrediction | null> {
   const homeTeam = game.homeTeam;
   const awayTeam = game.awayTeam;
@@ -455,6 +481,7 @@ async function generateMLPrediction(
   try {
     // Use real ML prediction service
     const predictionService = getPredictionService();
+    const inferenceStart = Date.now();
     
     const predictionInput: MLPredictionInput = {
       gameId: parsedGameId,
@@ -466,6 +493,7 @@ async function generateMLPrediction(
     };
     
     const prediction = await predictionService.predict(predictionInput);
+    const latencyMs = Date.now() - inferenceStart;
     
     // Create prediction in database with ML results
     const dbPrediction = await prisma.prediction.create({
@@ -490,6 +518,21 @@ async function generateMLPrediction(
     });
     
     console.log(`[Pipeline] ML Prediction created: ${homeTeam.name} vs ${awayTeam.name} (${prediction.prediction.winner}, ${(prediction.prediction.confidence * 100).toFixed(1)}% confidence, model: ${prediction.model.version})`);
+
+    await monitoring.recordPrediction({
+      predictionId: dbPrediction.id,
+      modelVersion: prediction.model.version,
+      algorithm: prediction.model.algorithm,
+      features: {
+        ...prediction.features,
+        featureCount: prediction.model.featureCount,
+        featureQuality: prediction.model.featureQuality,
+      },
+      predictedProbability: prediction.prediction.homeWinProbability,
+      predictedWinner: prediction.prediction.winner,
+      confidence: prediction.prediction.confidence,
+      latencyMs,
+    });
     
     return dbPrediction;
   } catch (error) {

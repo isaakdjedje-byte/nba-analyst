@@ -69,6 +69,24 @@ export interface ModelHealthStatus {
   issues: string[];
 }
 
+export interface LatestModelSummary {
+  version: string;
+  algorithm: string;
+  trainedAt: Date;
+  activatedAt: Date | null;
+  trainingDataStart: Date;
+  trainingDataEnd: Date;
+  numTrainingSamples: number;
+  numTestSamples: number;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
+  logLoss: number;
+  auc: number;
+  calibrationError: number;
+}
+
 export interface MonitoringConfig {
   calibrationCheckInterval: number; // hours
   driftCheckInterval: number;      // hours
@@ -442,14 +460,63 @@ export class MonitoringService {
     modelHealth: ModelHealthStatus[];
     drift: FeatureDriftReport | null;
     calibration: { bin: number; predicted: number; observed: number; count: number }[];
+    latestModel: LatestModelSummary | null;
   }> {
-    // Get last 7 days of metrics
-    const dailyMetrics: PredictionMetrics[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      // Would query for specific date
-    }
+    // Get last 7 days of metrics from prediction logs
+    const dailyRows = await prisma.$queryRaw<{
+      day: Date;
+      total: number;
+      resolved: number;
+      correct: number;
+      avg_prob: number | null;
+      avg_actual: number | null;
+      high_conf: number | null;
+      med_conf: number | null;
+      low_conf: number | null;
+    }[]>`
+      SELECT
+        DATE(created_at) as day,
+        COUNT(*)::int as total,
+        COUNT(actual_winner)::int as resolved,
+        SUM(CASE WHEN correct THEN 1 ELSE 0 END)::int as correct,
+        AVG(predicted_probability) as avg_prob,
+        AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+        SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0)::float as high_conf,
+        SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0)::float as med_conf,
+        SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0)::float as low_conf
+      FROM prediction_logs
+      WHERE created_at > NOW() - INTERVAL '7 days'
+      GROUP BY DATE(created_at)
+      ORDER BY day ASC
+    `;
+
+    const dailyMetrics: PredictionMetrics[] = dailyRows.map((row) => {
+      const resolved = row.resolved ?? 0;
+      const correct = row.correct ?? 0;
+      const total = row.total ?? 0;
+      const avgProb = row.avg_prob ?? 0;
+      const avgActual = row.avg_actual ?? 0;
+
+      return {
+        date: row.day,
+        window: 'day',
+        totalPredictions: total,
+        pickCount: total,
+        noBetCount: 0,
+        hardStopCount: 0,
+        resolvedCount: resolved,
+        correctPredictions: correct,
+        accuracy: resolved > 0 ? correct / resolved : 0,
+        avgPredictedProbability: avgProb,
+        avgActualOutcome: avgActual,
+        calibrationError: Math.abs(avgProb - avgActual),
+        highConfidenceRate: row.high_conf ?? 0,
+        mediumConfidenceRate: row.med_conf ?? 0,
+        lowConfidenceRate: row.low_conf ?? 0,
+        modelVersion: 'mixed',
+        algorithm: 'mixed',
+      };
+    });
 
     // Get active models health
     const activeModels = await prisma.$queryRaw<{ model_version: string }[]>`
@@ -481,11 +548,38 @@ export class MonitoringService {
     // Get calibration data
     const calibration = await this.getCalibrationData();
 
+    // Get active model summary
+    const activeModel = await prisma.mLModel.findFirst({
+      where: { isActive: true },
+      orderBy: { activatedAt: 'desc' },
+    });
+
+    const latestModel: LatestModelSummary | null = activeModel
+      ? {
+          version: activeModel.version,
+          algorithm: activeModel.algorithm,
+          trainedAt: activeModel.createdAt,
+          activatedAt: activeModel.activatedAt,
+          trainingDataStart: activeModel.trainingDataStart,
+          trainingDataEnd: activeModel.trainingDataEnd,
+          numTrainingSamples: activeModel.numTrainingSamples,
+          numTestSamples: activeModel.numTestSamples,
+          accuracy: activeModel.accuracy,
+          precision: activeModel.precision,
+          recall: activeModel.recall,
+          f1Score: activeModel.f1Score,
+          logLoss: activeModel.logLoss,
+          auc: activeModel.auc,
+          calibrationError: activeModel.calibrationError,
+        }
+      : null;
+
     return {
       dailyMetrics,
       modelHealth,
       drift,
       calibration,
+      latestModel,
     };
   }
 
