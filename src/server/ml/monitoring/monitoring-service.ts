@@ -184,30 +184,53 @@ export class MonitoringService {
     modelVersion?: string
   ): Promise<PredictionMetrics> {
     const interval = window === 'day' ? '1 day' : window === 'week' ? '7 days' : '30 days';
-    
-    const results = await prisma.$queryRaw<{
-      total: number;
-      resolved: number;
-      correct: number;
-      avg_prob: number;
-      avg_actual: number;
-      high_conf: number;
-      med_conf: number;
-      low_conf: number;
-    }[]>`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(actual_winner) as resolved,
-        SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
-        AVG(predicted_probability) as avg_prob,
-        AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
-        SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as high_conf,
-        SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
-        SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
-      FROM prediction_logs
-      WHERE created_at > NOW() - INTERVAL ${interval}
-        ${modelVersion ? prisma.$queryRaw`AND model_version = ${modelVersion}` : prisma.$queryRaw``}
-    `;
+
+    const results = modelVersion
+      ? await prisma.$queryRaw<{
+          total: number;
+          resolved: number;
+          correct: number;
+          avg_prob: number;
+          avg_actual: number;
+          high_conf: number;
+          med_conf: number;
+          low_conf: number;
+        }[]>`
+          SELECT
+            COUNT(*) as total,
+            COUNT(actual_winner) as resolved,
+            SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
+            AVG(predicted_probability) as avg_prob,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as high_conf,
+            SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
+            SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
+          FROM prediction_logs
+          WHERE created_at > NOW() - INTERVAL ${interval}
+            AND model_version = ${modelVersion}
+        `
+      : await prisma.$queryRaw<{
+          total: number;
+          resolved: number;
+          correct: number;
+          avg_prob: number;
+          avg_actual: number;
+          high_conf: number;
+          med_conf: number;
+          low_conf: number;
+        }[]>`
+          SELECT
+            COUNT(*) as total,
+            COUNT(actual_winner) as resolved,
+            SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
+            AVG(predicted_probability) as avg_prob,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as high_conf,
+            SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
+            SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
+          FROM prediction_logs
+          WHERE created_at > NOW() - INTERVAL ${interval}
+        `;
 
     const row = results[0];
     const resolvedCount = row?.resolved ?? 0;
@@ -242,23 +265,40 @@ export class MonitoringService {
     modelVersion?: string,
     numBins: number = 10
   ): Promise<{ bin: number; predicted: number; observed: number; count: number }[]> {
-    const results = await prisma.$queryRaw<{
-      bin: number;
-      avg_pred: number;
-      avg_actual: number;
-      count: number;
-    }[]>`
-      SELECT 
-        FLOOR(predicted_probability * ${numBins}) as bin,
-        AVG(predicted_probability) as avg_pred,
-        AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
-        COUNT(*) as count
-      FROM prediction_logs
-      WHERE actual_winner IS NOT NULL
-        ${modelVersion ? prisma.$queryRaw`AND model_version = ${modelVersion}` : prisma.$queryRaw``}
-      GROUP BY FLOOR(predicted_probability * ${numBins})
-      ORDER BY bin
-    `;
+    const results = modelVersion
+      ? await prisma.$queryRaw<{
+          bin: number;
+          avg_pred: number;
+          avg_actual: number;
+          count: number;
+        }[]>`
+          SELECT
+            FLOOR(predicted_probability * ${numBins}) as bin,
+            AVG(predicted_probability) as avg_pred,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            COUNT(*) as count
+          FROM prediction_logs
+          WHERE actual_winner IS NOT NULL
+            AND model_version = ${modelVersion}
+          GROUP BY FLOOR(predicted_probability * ${numBins})
+          ORDER BY bin
+        `
+      : await prisma.$queryRaw<{
+          bin: number;
+          avg_pred: number;
+          avg_actual: number;
+          count: number;
+        }[]>`
+          SELECT
+            FLOOR(predicted_probability * ${numBins}) as bin,
+            AVG(predicted_probability) as avg_pred,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            COUNT(*) as count
+          FROM prediction_logs
+          WHERE actual_winner IS NOT NULL
+          GROUP BY FLOOR(predicted_probability * ${numBins})
+          ORDER BY bin
+        `;
 
     return results.map(r => ({
       bin: r.bin,
