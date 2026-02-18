@@ -115,6 +115,20 @@ export class MonitoringService {
     this.config = { ...DEFAULT_MONITORING_CONFIG, ...config };
   }
 
+  private toNumber(value: unknown, fallback: number = 0): number {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : fallback;
+    }
+    if (typeof value === 'bigint') {
+      return Number(value);
+    }
+    if (typeof value === 'string') {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    return fallback;
+  }
+
   /**
    * Record a prediction event
    */
@@ -183,7 +197,7 @@ export class MonitoringService {
     window: 'day' | 'week' | 'month',
     modelVersion?: string
   ): Promise<PredictionMetrics> {
-    const interval = window === 'day' ? '1 day' : window === 'week' ? '7 days' : '30 days';
+    const windowDays = window === 'day' ? 1 : window === 'week' ? 7 : 30;
 
     const results = modelVersion
       ? await prisma.$queryRaw<{
@@ -206,7 +220,7 @@ export class MonitoringService {
             SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
             SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
           FROM prediction_logs
-          WHERE created_at > NOW() - INTERVAL ${interval}
+          WHERE created_at > NOW() - (${windowDays} * INTERVAL '1 day')
             AND model_version = ${modelVersion}
         `
       : await prisma.$queryRaw<{
@@ -229,13 +243,15 @@ export class MonitoringService {
             SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
             SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
           FROM prediction_logs
-          WHERE created_at > NOW() - INTERVAL ${interval}
+          WHERE created_at > NOW() - (${windowDays} * INTERVAL '1 day')
         `;
 
     const row = results[0];
-    const resolvedCount = row?.resolved ?? 0;
-    const correctCount = row?.correct ?? 0;
-    const totalCount = row?.total ?? 0;
+    const resolvedCount = this.toNumber(row?.resolved, 0);
+    const correctCount = this.toNumber(row?.correct, 0);
+    const totalCount = this.toNumber(row?.total, 0);
+    const avgProb = this.toNumber(row?.avg_prob, 0);
+    const avgActual = this.toNumber(row?.avg_actual, 0);
 
     return {
       date: new Date(),
@@ -247,12 +263,12 @@ export class MonitoringService {
       resolvedCount,
       correctPredictions: correctCount,
       accuracy: resolvedCount > 0 ? correctCount / resolvedCount : 0,
-      avgPredictedProbability: row?.avg_prob ?? 0,
-      avgActualOutcome: row?.avg_actual ?? 0,
-      calibrationError: Math.abs((row?.avg_prob ?? 0) - (row?.avg_actual ?? 0)),
-      highConfidenceRate: row?.high_conf ?? 0,
-      mediumConfidenceRate: row?.med_conf ?? 0,
-      lowConfidenceRate: row?.low_conf ?? 0,
+      avgPredictedProbability: avgProb,
+      avgActualOutcome: avgActual,
+      calibrationError: Math.abs(avgProb - avgActual),
+      highConfidenceRate: this.toNumber(row?.high_conf, 0),
+      mediumConfidenceRate: this.toNumber(row?.med_conf, 0),
+      lowConfidenceRate: this.toNumber(row?.low_conf, 0),
       modelVersion: modelVersion || 'unknown',
       algorithm: 'unknown',
     };
@@ -280,8 +296,8 @@ export class MonitoringService {
           FROM prediction_logs
           WHERE actual_winner IS NOT NULL
             AND model_version = ${modelVersion}
-          GROUP BY FLOOR(predicted_probability * ${numBins})
-          ORDER BY bin
+          GROUP BY 1
+          ORDER BY 1
         `
       : await prisma.$queryRaw<{
           bin: number;
@@ -296,15 +312,15 @@ export class MonitoringService {
             COUNT(*) as count
           FROM prediction_logs
           WHERE actual_winner IS NOT NULL
-          GROUP BY FLOOR(predicted_probability * ${numBins})
-          ORDER BY bin
+          GROUP BY 1
+          ORDER BY 1
         `;
 
     return results.map(r => ({
-      bin: r.bin,
-      predicted: r.avg_pred,
-      observed: r.avg_actual,
-      count: r.count,
+      bin: this.toNumber(r.bin, 0),
+      predicted: this.toNumber(r.avg_pred, 0),
+      observed: this.toNumber(r.avg_actual, 0),
+      count: this.toNumber(r.count, 0),
     }));
   }
 
@@ -329,8 +345,8 @@ export class MonitoringService {
       FROM prediction_logs,
         JSONB_EACH_TEXT(features)
       WHERE model_version = ${modelVersion}
-        AND created_at > NOW() - INTERVAL '${baselineWindow} days'
-        AND created_at < NOW() - INTERVAL '${currentWindow} days'
+        AND created_at > NOW() - (${baselineWindow} * INTERVAL '1 day')
+        AND created_at < NOW() - (${currentWindow} * INTERVAL '1 day')
       GROUP BY key
     `;
 
@@ -345,7 +361,7 @@ export class MonitoringService {
       FROM prediction_logs,
         JSONB_EACH_TEXT(features)
       WHERE model_version = ${modelVersion}
-        AND created_at > NOW() - INTERVAL '${currentWindow} days'
+        AND created_at > NOW() - (${currentWindow} * INTERVAL '1 day')
       GROUP BY key
     `;
 
@@ -432,10 +448,10 @@ export class MonitoringService {
     `;
 
     const issues: string[] = [];
-    const predictionsInLastHour = lastHour[0]?.count ?? 0;
-    const avgLatency = lastHour[0]?.avg_latency ?? 0;
-    const errorCount = errors[0]?.error_count ?? 0;
-    const total24h = totalLast24h[0]?.count ?? 0;
+    const predictionsInLastHour = this.toNumber(lastHour[0]?.count, 0);
+    const avgLatency = this.toNumber(lastHour[0]?.avg_latency, 0);
+    const errorCount = this.toNumber(errors[0]?.error_count, 0);
+    const total24h = this.toNumber(totalLast24h[0]?.count, 0);
     const errorRate = total24h > 0 ? errorCount / total24h : 0;
 
     if (predictionsInLastHour === 0) {
@@ -531,11 +547,11 @@ export class MonitoringService {
     `;
 
     const dailyMetrics: PredictionMetrics[] = dailyRows.map((row) => {
-      const resolved = row.resolved ?? 0;
-      const correct = row.correct ?? 0;
-      const total = row.total ?? 0;
-      const avgProb = row.avg_prob ?? 0;
-      const avgActual = row.avg_actual ?? 0;
+      const resolved = this.toNumber(row.resolved, 0);
+      const correct = this.toNumber(row.correct, 0);
+      const total = this.toNumber(row.total, 0);
+      const avgProb = this.toNumber(row.avg_prob, 0);
+      const avgActual = this.toNumber(row.avg_actual, 0);
 
       return {
         date: row.day,
@@ -550,9 +566,9 @@ export class MonitoringService {
         avgPredictedProbability: avgProb,
         avgActualOutcome: avgActual,
         calibrationError: Math.abs(avgProb - avgActual),
-        highConfidenceRate: row.high_conf ?? 0,
-        mediumConfidenceRate: row.med_conf ?? 0,
-        lowConfidenceRate: row.low_conf ?? 0,
+        highConfidenceRate: this.toNumber(row.high_conf, 0),
+        mediumConfidenceRate: this.toNumber(row.med_conf, 0),
+        lowConfidenceRate: this.toNumber(row.low_conf, 0),
         modelVersion: 'mixed',
         algorithm: 'mixed',
       };
