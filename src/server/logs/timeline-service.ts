@@ -20,6 +20,7 @@ import type {
   TimelinePhaseGroup,
 } from '@/features/logs/types';
 import { PHASE_ORDER } from '@/features/logs/types';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 /**
  * Generate timeline events from persisted decision data.
@@ -75,7 +76,11 @@ function generateTimelineEvents(decision: PolicyDecisionWithRelations): Timeline
       traceId,
       outputs: {
         status: decision.status,
-        recommendedPick: decision.recommendedPick,
+        recommendedPick: formatRecommendedPick(
+          decision.recommendedPick,
+          decision.homeTeam,
+          decision.awayTeam
+        ),
         publishedAt: decision.publishedAt,
       },
     },

@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDecisionHistory, type DecisionStatus } from '@/server/db/repositories';
 import { requireAuth } from '@/server/auth/server-rbac';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -118,7 +119,11 @@ export async function GET(request: NextRequest) {
         homeTeam: decision.homeTeam,
         awayTeam: decision.awayTeam,
         status: decision.status,
-        recommendedPick: decision.recommendedPick,
+        recommendedPick: formatRecommendedPick(
+          decision.recommendedPick,
+          decision.homeTeam,
+          decision.awayTeam
+        ),
         rationale: decision.rationale,
         confidence: decision.confidence,
         edge: decision.edge,

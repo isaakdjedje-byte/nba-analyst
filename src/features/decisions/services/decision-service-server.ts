@@ -5,6 +5,7 @@
  */
 
 import { prisma } from '@/server/db/client';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 import type { DecisionsResponse, Decision, DecisionStatus } from '../types';
 
 function formatLocalDate(date: Date): string {
@@ -125,7 +126,11 @@ export async function fetchDecisionsServer(
       rationale: decision.rationale,
       edge: decision.edge,
       confidence: decision.confidence,
-      recommendedPick: decision.recommendedPick,
+      recommendedPick: formatRecommendedPick(
+        decision.recommendedPick,
+        decision.homeTeam,
+        decision.awayTeam
+      ),
       dailyRunId: decision.runId,
       createdAt: decision.createdAt.toISOString(),
     }));

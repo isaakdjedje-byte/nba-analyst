@@ -19,6 +19,7 @@ import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
 import type { InvestigationResult } from '@/features/investigation/types';
 import { v4 as uuidv4 } from 'uuid';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -61,7 +62,11 @@ function transformToInvestigationResult(decision: Awaited<ReturnType<typeof getP
       hardStop: decision.hardStopGate,
     },
     hardStopReason: decision.hardStopReason,
-    recommendedPick: decision.recommendedPick,
+    recommendedPick: formatRecommendedPick(
+      decision.recommendedPick,
+      decision.homeTeam,
+      decision.awayTeam
+    ),
   };
 }
 

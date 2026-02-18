@@ -14,6 +14,7 @@ import {
   type DecisionStatus,
   type PolicyDecisionWithRelations,
 } from '@/server/db/repositories/policy-decisions-repository';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 import type {
   LogEntry,
   LogsQueryParams,
@@ -53,7 +54,11 @@ function transformToLogEntry(decision: PolicyDecisionWithRelations): LogEntry {
     driftGate: decision.driftGate,
     hardStopGate: decision.hardStopGate,
     hardStopReason: decision.hardStopReason,
-    recommendedPick: decision.recommendedPick,
+    recommendedPick: formatRecommendedPick(
+      decision.recommendedPick,
+      decision.homeTeam,
+      decision.awayTeam
+    ),
     confidence: decision.confidence,
     edge: decision.edge,
     traceId: decision.traceId,

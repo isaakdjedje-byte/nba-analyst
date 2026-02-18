@@ -14,6 +14,13 @@ import type { PerformanceMetrics, DateRange } from '../types';
 // Create cache service for performance metrics (5 min TTL)
 const metricsCache = new CacheService(CACHE_TTL.PERFORMANCE_METRICS);
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Calculate performance metrics for a given date range
  * Uses cache-aside pattern: check cache first, fetch if miss, store in cache
@@ -45,8 +52,8 @@ export async function calculatePerformanceMetrics(
   }
 
   // Generate cache key from date range
-  const fromDateStr = fromDate.toISOString().split('T')[0];
-  const toDateStr = toDate.toISOString().split('T')[0];
+  const fromDateStr = formatLocalDate(fromDate);
+  const toDateStr = formatLocalDate(toDate);
   const cacheKey = performanceKeys.metrics(fromDateStr, toDateStr);
 
   // Cache-aside pattern: try cache first
@@ -73,7 +80,7 @@ export async function calculatePerformanceMetrics(
  */
 async function fetchMetricsFromDB(fromDate: Date, toDate: Date): Promise<PerformanceMetrics> {
   const where = {
-    executedAt: {
+    matchDate: {
       gte: fromDate,
       lte: toDate,
     },
@@ -178,8 +185,8 @@ export function getDefaultDateRange(): DateRange {
   fromDate.setDate(fromDate.getDate() - 30);
   
   return {
-    fromDate: fromDate.toISOString().split('T')[0],
-    toDate: toDate.toISOString().split('T')[0],
+    fromDate: formatLocalDate(fromDate),
+    toDate: formatLocalDate(toDate),
   };
 }
 

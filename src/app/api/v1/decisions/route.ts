@@ -19,6 +19,7 @@ import { getRedisClient } from '@/server/cache/redis-client';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
 import type { Prisma } from '@prisma/client';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 type DecisionStatus = 'PICK' | 'NO_BET' | 'HARD_STOP';
 
@@ -522,7 +523,11 @@ export async function GET(request: NextRequest) {
       rationale: decision.rationale,
       edge: decision.edge,
       confidence: decision.confidence,
-      recommendedPick: decision.recommendedPick,
+      recommendedPick: formatRecommendedPick(
+        decision.recommendedPick,
+        decision.homeTeam,
+        decision.awayTeam
+      ),
       dailyRunId: decision.runId,
       createdAt: decision.createdAt.toISOString(),
     }));

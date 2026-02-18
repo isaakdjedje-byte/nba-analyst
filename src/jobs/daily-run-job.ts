@@ -17,6 +17,7 @@ import { sendAlert, createHardStopAlert } from '@/server/ingestion/alerting';
 import { v4 as uuidv4 } from 'uuid';
 import { Logger } from 'pino';
 import { Prisma } from '@prisma/client';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Fallback chain imports (Story 2.7)
 import {
@@ -517,7 +518,11 @@ export async function processDailyRun(
           confidence: prediction.confidence,
           edge: prediction.edge,
           modelVersion: prediction.modelVersion,
-          recommendedPick: prediction.winnerPrediction,
+          recommendedPick: formatRecommendedPick(
+            prediction.winnerPrediction,
+            prediction.homeTeam,
+            prediction.awayTeam
+          ),
           predictionInputs: buildPredictionInputs(
             prediction,
             latestPredictionLogById.get(prediction.id) ?? null

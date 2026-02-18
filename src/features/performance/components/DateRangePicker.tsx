@@ -11,6 +11,13 @@
 import { useCallback } from 'react';
 import { Calendar } from 'lucide-react';
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 interface DateRangePickerProps {
   fromDate: string;
   toDate: string;
@@ -40,8 +47,8 @@ export function DateRangePicker({
     fromDate.setDate(fromDate.getDate() - days);
     
     onDateChange(
-      fromDate.toISOString().split('T')[0],
-      toDate.toISOString().split('T')[0]
+      formatLocalDate(fromDate),
+      formatLocalDate(toDate)
     );
   }, [onDateChange]);
 
@@ -110,7 +117,7 @@ export function DateRangePicker({
             value={toDate}
             onChange={handleToDateChange}
             min={fromDate}
-            max={new Date().toISOString().split('T')[0]}
+            max={formatLocalDate(new Date())}
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             data-testid={testId ? `${testId}-to` : undefined}
           />

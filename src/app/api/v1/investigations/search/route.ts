@@ -34,6 +34,7 @@ import type {
   InvestigationResult 
 } from '@/features/investigation/types';
 import { v4 as uuidv4 } from 'uuid';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -87,7 +88,11 @@ function transformToInvestigationResult(decision: PolicyDecisionWithRelations): 
       hardStop: decision.hardStopGate,
     },
     hardStopReason: decision.hardStopReason,
-    recommendedPick: decision.recommendedPick,
+    recommendedPick: formatRecommendedPick(
+      decision.recommendedPick,
+      decision.homeTeam,
+      decision.awayTeam
+    ),
   };
 }
 
