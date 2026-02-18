@@ -45,6 +45,13 @@ const SORT_OPTIONS: { value: LogSortField; label: string }[] = [
 // Session storage key for sort preference (AC5)
 const SESSION_SORT_KEY = 'logs-sort-preference';
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Skeleton for loading state
  */
@@ -139,11 +146,11 @@ export function LogsView() {
   const defaultFromDate = useMemo(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
+    return formatLocalDate(date);
   }, []);
 
   const defaultToDate = useMemo(() => {
-    return new Date().toISOString().split('T')[0];
+    return formatLocalDate(new Date());
   }, []);
 
   // AC4: Get filter params from URL for bookmarking/sharing

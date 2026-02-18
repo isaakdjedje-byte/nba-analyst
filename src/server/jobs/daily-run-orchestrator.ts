@@ -247,6 +247,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
       consecutiveLosses: DEFAULT_POLICY_CONFIG.hardStops.consecutiveLosses,
       bankrollPercent: DEFAULT_POLICY_CONFIG.hardStops.bankrollPercent,
       defaultStakeAmount: parseInt(process.env.DEFAULT_STAKE_AMOUNT || '100', 10),
+      dataSourceFingerprints: config.dataSourceFingerprints,
     };
 
     const adaptivePersistence = await applyAdaptiveThresholdsToPolicyConfig({

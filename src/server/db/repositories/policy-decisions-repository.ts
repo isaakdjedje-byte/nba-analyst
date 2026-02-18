@@ -375,6 +375,9 @@ export interface DecisionHistoryQueryParams {
   toDate?: Date;
   status?: DecisionStatus;
   matchId?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  userId?: string;
   dateField?: 'matchDate' | 'executedAt';
   sortBy?: 'matchDate' | 'executedAt';
   sortOrder?: 'asc' | 'desc';
@@ -404,6 +407,9 @@ export async function getDecisionHistory(
     toDate,
     status,
     matchId,
+    homeTeam,
+    awayTeam,
+    userId,
     dateField = 'matchDate',
     sortBy = 'matchDate',
     sortOrder = 'desc',
@@ -430,7 +436,31 @@ export async function getDecisionHistory(
   }
   
   if (matchId) {
-    where.matchId = matchId;
+    where.matchId = {
+      contains: matchId,
+      mode: 'insensitive',
+    };
+  }
+
+  if (homeTeam) {
+    where.homeTeam = {
+      contains: homeTeam,
+      mode: 'insensitive',
+    };
+  }
+
+  if (awayTeam) {
+    where.awayTeam = {
+      contains: awayTeam,
+      mode: 'insensitive',
+    };
+  }
+
+  if (userId) {
+    where.userId = {
+      contains: userId,
+      mode: 'insensitive',
+    };
   }
 
   if (!includeSynthetic) {

@@ -32,7 +32,15 @@ export async function fetchPolicyConfig(): Promise<PolicyConfigResponse> {
     throw new Error(error.error?.message || 'Failed to fetch policy configuration');
   }
 
-  return response.json();
+  const payload = await response.json();
+  if (payload?.data?.config) {
+    return {
+      config: payload.data.config,
+      defaults: payload.data.defaults,
+    };
+  }
+
+  return payload;
 }
 
 /**

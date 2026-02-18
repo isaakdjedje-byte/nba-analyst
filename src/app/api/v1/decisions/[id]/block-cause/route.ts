@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPolicyDecisionById, getPolicyDecisionByTraceId } from '@/server/db/repositories';
 import type { BlockCause, BlockCauseCategory } from '@/features/decisions/types';
+import { requireAuth } from '@/server/auth/server-rbac';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -218,6 +219,11 @@ export async function GET(
   const timestamp = new Date().toISOString();
 
   try {
+    const authResult = await requireAuth();
+    if (authResult.error) {
+      return authResult.error;
+    }
+
     const { id } = await params;
 
     // Check if id is a traceId or direct decision ID

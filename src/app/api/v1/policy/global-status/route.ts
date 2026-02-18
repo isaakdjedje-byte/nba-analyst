@@ -11,6 +11,8 @@ import { NextResponse } from 'next/server';
 import type { GlobalGuardrailState, GuardrailApiResponse, GuardrailApiError } from '@/features/policy/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getHardStopStatus } from '@/jobs/daily-run-job';
+import { requireOps } from '@/server/auth/server-rbac';
+import { NextRequest } from 'next/server';
 
 /**
  * GET /api/v1/policy/global-status
@@ -25,10 +27,15 @@ import { getHardStopStatus } from '@/jobs/daily-run-job';
  * AC1: Affichage du statut global
  * AC2: Affichage de la cause et action recommandée
  */
-export async function GET(): Promise<NextResponse<GuardrailApiResponse | GuardrailApiError>> {
+export async function GET(request: NextRequest): Promise<NextResponse<GuardrailApiResponse | GuardrailApiError>> {
   const traceId = uuidv4();
   
   try {
+    const authResult = await requireOps(request);
+    if (authResult.error) {
+      return authResult.error as NextResponse<GuardrailApiResponse | GuardrailApiError>;
+    }
+
     const status: GlobalGuardrailState = await getCurrentGuardrailState();
 
     const response: GuardrailApiResponse = {

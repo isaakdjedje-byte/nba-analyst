@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getDecisionHistory, type DecisionStatus } from '@/server/db/repositories';
+import { requireAuth } from '@/server/auth/server-rbac';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -38,6 +39,11 @@ export async function GET(request: NextRequest) {
   const timestamp = new Date().toISOString();
 
   try {
+    const authResult = await requireAuth();
+    if (authResult.error) {
+      return authResult.error;
+    }
+
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
     

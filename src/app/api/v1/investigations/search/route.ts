@@ -24,7 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
-import { getDecisionHistory, type DecisionHistoryResult } from '@/server/db/repositories/policy-decisions-repository';
+import { getDecisionHistory } from '@/server/db/repositories/policy-decisions-repository';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
 import type { DecisionStatus, PolicyDecisionWithRelations } from '@/server/db/repositories/policy-decisions-repository';
@@ -241,8 +241,7 @@ export async function GET(request: NextRequest) {
       status: status as DecisionStatus | 'all',
     };
 
-    // Get decisions from the database (reuse logs service logic)
-    // In a real implementation, this would be a dedicated investigation query
+    // Get decisions from the database with all filters applied at query time
     const dbStatus = status === 'all' ? undefined : status as DecisionStatus;
     const dbFromDate = fromDate ? new Date(fromDate) : undefined;
     const dbToDate = toDate ? new Date(toDate) : undefined;
@@ -255,10 +254,14 @@ export async function GET(request: NextRequest) {
       dbToDate.setHours(23, 59, 59, 999);
     }
 
-    const decisions: DecisionHistoryResult = await getDecisionHistory({
+    const decisions = await getDecisionHistory({
       fromDate: dbFromDate,
       toDate: dbToDate,
       status: dbStatus,
+      matchId: matchId || undefined,
+      homeTeam: homeTeam || undefined,
+      awayTeam: awayTeam || undefined,
+      userId: userId || undefined,
       dateField: 'executedAt',
       sortBy: 'executedAt',
       sortOrder: 'desc',
@@ -266,34 +269,11 @@ export async function GET(request: NextRequest) {
       limit,
     });
 
-    // Apply additional filters (matchId, homeTeam, awayTeam, userId)
-    let filteredDecisions = decisions.decisions;
-    
-    if (matchId) {
-      filteredDecisions = filteredDecisions.filter(d => d.matchId.includes(matchId));
-    }
-    if (homeTeam) {
-      filteredDecisions = filteredDecisions.filter(d => 
-        d.homeTeam.toLowerCase().includes(homeTeam.toLowerCase())
-      );
-    }
-    if (awayTeam) {
-      filteredDecisions = filteredDecisions.filter(d => 
-        d.awayTeam.toLowerCase().includes(awayTeam.toLowerCase())
-      );
-    }
-    // FR23: Filter by user who received the decision
-    if (userId) {
-      filteredDecisions = filteredDecisions.filter(d => 
-        d.userId.toLowerCase().includes(userId.toLowerCase())
-      );
-    }
-
     // Transform to investigation results
-    const results: InvestigationResult[] = filteredDecisions.map(decision => transformToInvestigationResult(decision)).filter(Boolean) as InvestigationResult[];
+    const results: InvestigationResult[] = decisions.decisions.map(decision => transformToInvestigationResult(decision)).filter(Boolean) as InvestigationResult[];
 
     // Calculate pagination
-    const total = results.length;
+    const total = decisions.total;
     const totalPages = Math.ceil(total / limit);
 
     // Build response

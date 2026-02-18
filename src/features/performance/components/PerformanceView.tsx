@@ -16,6 +16,13 @@ import { DateRangePicker } from '../components/DateRangePicker';
 import { usePerformanceMetrics } from '../hooks/usePerformanceMetrics';
 import type { PerformanceMetrics } from '../types';
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Skeleton component for loading state
 function PerformanceMetricsSkeleton() {
   return (
@@ -91,11 +98,11 @@ export function PerformanceView() {
   const defaultFromDate = useMemo(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
+    return formatLocalDate(date);
   }, []);
 
   const defaultToDate = useMemo(() => {
-    return new Date().toISOString().split('T')[0];
+    return formatLocalDate(new Date());
   }, []);
 
   // AC4: Get dates from URL params for bookmarking/sharing

@@ -29,7 +29,7 @@ import {
 } from '@/server/ml/orchestration';
 
 // Story 4.5: Import data source fingerprints types
-import type { DataSourceFingerprints } from '@/server/audit/types';
+import { DataSourceFingerprintsSchema, type DataSourceFingerprints } from '@/server/audit/types';
 
 interface EvaluatedFallbackResult {
   finalLevel: FallbackLevel;
@@ -77,6 +77,73 @@ export interface DailyRunJobResult {
     fallbackLevels: Record<FallbackLevel, number>;
     qualityAssessments: DataQualityAssessment[];
   };
+}
+
+function sanitizeDataSourceFingerprints(
+  fingerprints?: DataSourceFingerprints
+): Prisma.InputJsonValue | undefined {
+  if (!fingerprints || fingerprints.length === 0) {
+    return undefined;
+  }
+
+  const normalized = fingerprints.map((item) => ({
+    ...item,
+    fetchTimestamp:
+      item.fetchTimestamp instanceof Date ? item.fetchTimestamp.toISOString() : item.fetchTimestamp,
+  }));
+
+  const validation = DataSourceFingerprintsSchema.safeParse(normalized);
+  if (!validation.success) {
+    console.warn('[DailyRunJob] Invalid dataSourceFingerprints payload, skipping persistence');
+    return undefined;
+  }
+
+  return validation.data as unknown as Prisma.InputJsonValue;
+}
+
+function buildPredictionInputs(
+  prediction: {
+    confidence: number;
+    edge: number | null;
+    winnerPrediction: string | null;
+    scorePrediction: string | null;
+    overUnderPrediction: number | null;
+    modelVersion: string;
+    homeTeam: string;
+    awayTeam: string;
+  },
+  predictionLog: {
+    features: Prisma.JsonValue;
+    predictedProbability: number;
+    confidence: number;
+  } | null
+): Prisma.InputJsonValue {
+  const baseInputs: Record<string, unknown> = {
+    modelVersion: prediction.modelVersion,
+    confidence: prediction.confidence,
+    edge: prediction.edge,
+    winnerPrediction: prediction.winnerPrediction,
+    scorePrediction: prediction.scorePrediction,
+    overUnderPrediction: prediction.overUnderPrediction,
+    homeTeam: prediction.homeTeam,
+    awayTeam: prediction.awayTeam,
+  };
+
+  if (!predictionLog) {
+    return baseInputs as Prisma.InputJsonValue;
+  }
+
+  const features =
+    predictionLog.features && typeof predictionLog.features === 'object' && !Array.isArray(predictionLog.features)
+      ? (predictionLog.features as Record<string, unknown>)
+      : {};
+
+  return {
+    ...baseInputs,
+    ...features,
+    predictedProbability: predictionLog.predictedProbability,
+    predictionLogConfidence: predictionLog.confidence,
+  } as Prisma.InputJsonValue;
 }
 
 /**
@@ -258,6 +325,8 @@ export async function processDailyRun(
     where: { runId, status: 'pending' },
     orderBy: { createdAt: 'asc' },
   });
+
+  const fingerprintJson = sanitizeDataSourceFingerprints(config.dataSourceFingerprints);
   
   if (predictions.length === 0) {
     return {
@@ -275,6 +344,28 @@ export async function processDailyRun(
         qualityAssessments: [],
       },
     };
+  }
+
+  const predictionLogs = await prisma.predictionLog.findMany({
+    where: {
+      predictionId: {
+        in: predictions.map((prediction) => prediction.id),
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      predictionId: true,
+      features: true,
+      predictedProbability: true,
+      confidence: true,
+    },
+  });
+
+  const latestPredictionLogById = new Map<string, (typeof predictionLogs)[number]>();
+  for (const log of predictionLogs) {
+    if (!latestPredictionLogById.has(log.predictionId)) {
+      latestPredictionLogById.set(log.predictionId, log);
+    }
   }
   
   // Initialize policy engine
@@ -330,7 +421,8 @@ export async function processDailyRun(
         predictions.slice(predictions.indexOf(prediction)),
         runId,
         hardStopReason,
-        tracker
+        tracker,
+        config.dataSourceFingerprints
       );
       
       hardStopCount = predictions.length - picksCount - noBetCount;
@@ -426,8 +518,12 @@ export async function processDailyRun(
           edge: prediction.edge,
           modelVersion: prediction.modelVersion,
           recommendedPick: prediction.winnerPrediction,
+          predictionInputs: buildPredictionInputs(
+            prediction,
+            latestPredictionLogById.get(prediction.id) ?? null
+          ),
           // Story 4.5: Add data source fingerprints for audit
-          dataSourceFingerprints: config.dataSourceFingerprints as unknown as Prisma.InputJsonValue,
+          dataSourceFingerprints: fingerprintJson,
         } as Prisma.PolicyDecisionUncheckedCreateInput,
       });
       
@@ -543,6 +639,7 @@ async function markRemainingAsHardStop(
   dataSourceFingerprints?: DataSourceFingerprints
 ): Promise<void> {
   const recommendedAction = tracker.getRecommendedAction();
+  const fingerprintJson = sanitizeDataSourceFingerprints(dataSourceFingerprints);
   
   for (const prediction of remainingPredictions) {
     try {
@@ -570,8 +667,16 @@ async function markRemainingAsHardStop(
           confidence: prediction.confidence,
           edge: prediction.edge,
           modelVersion: prediction.modelVersion,
+          predictionInputs: {
+            modelVersion: prediction.modelVersion,
+            confidence: prediction.confidence,
+            edge: prediction.edge,
+            homeTeam: prediction.homeTeam,
+            awayTeam: prediction.awayTeam,
+            forcedHardStop: true,
+          } as Prisma.InputJsonValue,
           // Story 4.5: Add data source fingerprints for audit
-          dataSourceFingerprints: dataSourceFingerprints as unknown as Prisma.InputJsonValue,
+          dataSourceFingerprints: fingerprintJson,
         } as Prisma.PolicyDecisionUncheckedCreateInput,
       });
       

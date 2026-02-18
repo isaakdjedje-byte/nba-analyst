@@ -103,6 +103,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Build where clause
     const where: Record<string, unknown> = {};
+    const includeSynthetic = searchParams.get('includeSynthetic') === 'true';
     
     // Date filter
     if (query.fromDate || query.toDate) {
@@ -131,6 +132,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Match ID filter
     if (query.matchId) {
       where.matchId = query.matchId;
+    }
+
+    if (!includeSynthetic) {
+      where.NOT = {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      };
     }
 
     // Calculate pagination
