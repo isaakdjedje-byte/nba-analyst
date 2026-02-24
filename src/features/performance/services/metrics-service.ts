@@ -65,43 +65,49 @@ export async function calculatePerformanceMetrics(
 }
 
 /**
- * Fetch metrics directly from database
+ * Fetch metrics directly from database using aggregation for better performance
  * @param fromDate - Start date
  * @param toDate - End date
  * @returns PerformanceMetrics
  */
 async function fetchMetricsFromDB(fromDate: Date, toDate: Date): Promise<PerformanceMetrics> {
-  // Query policy decisions within date range
-  const decisions = await prisma.policyDecision.findMany({
-    where: {
-      matchDate: {
-        gte: fromDate,
-        lte: toDate,
+  // Use Prisma aggregation for better performance - avoids fetching all records
+  const [totalResult, picksResult, noBetResult, hardStopResult] = await Promise.all([
+    prisma.policyDecision.count({
+      where: {
+        matchDate: { gte: fromDate, lte: toDate },
+        publishedAt: { not: null },
       },
-      publishedAt: {
-        not: null, // Only published decisions count
+    }),
+    prisma.policyDecision.count({
+      where: {
+        matchDate: { gte: fromDate, lte: toDate },
+        publishedAt: { not: null },
+        status: 'PICK',
       },
-    },
-    select: {
-      id: true,
-      status: true,
-      confidence: true,
-      homeTeam: true,
-      awayTeam: true,
-      recommendedPick: true,
-    },
-  });
+    }),
+    prisma.policyDecision.count({
+      where: {
+        matchDate: { gte: fromDate, lte: toDate },
+        publishedAt: { not: null },
+        status: 'NO_BET',
+      },
+    }),
+    prisma.policyDecision.count({
+      where: {
+        matchDate: { gte: fromDate, lte: toDate },
+        publishedAt: { not: null },
+        status: 'HARD_STOP',
+      },
+    }),
+  ]);
 
-  const totalDecisions = decisions.length;
-  
-  // Count decisions by status
-  const picksCount = decisions.filter(d => d.status === 'PICK').length;
-  const noBetCount = decisions.filter(d => d.status === 'NO_BET').length;
-  const hardStopCount = decisions.filter(d => d.status === 'HARD_STOP').length;
+  const totalDecisions = totalResult;
+  const picksCount = picksResult;
+  const noBetCount = noBetResult;
+  const hardStopCount = hardStopResult;
 
   // Calculate accuracy rate
-  // For simplicity, accuracy = picks / total decisions
-  // In a real system, this would need actual game outcomes
   const accuracyRate = totalDecisions > 0 
     ? Math.round((picksCount / totalDecisions) * 100 * 10) / 10 
     : 0;
