@@ -379,9 +379,13 @@ export class LogisticRegressionModel {
    * Deserialize model from JSON
    */
   deserialize(json: string): void {
-    const data = JSON.parse(json);
-    this.weights = data.weights;
-    this.config = { ...this.config, ...data.config };
+    try {
+      const data = JSON.parse(json);
+      this.weights = data.weights;
+      this.config = { ...this.config, ...data.config };
+    } catch (error) {
+      throw new Error(`Failed to deserialize Logistic Regression model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

@@ -259,13 +259,16 @@ export abstract class BaseProvider {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
-          const response = await fetch(url, {
-            ...options,
-            headers,
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
+          let response: Response;
+          try {
+            response = await fetch(url, {
+              ...options,
+              headers,
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timeoutId);
+          }
 
           const latency = Date.now() - startTime;
           this.setLastLatency(latency);

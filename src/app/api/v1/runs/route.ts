@@ -25,8 +25,13 @@ export async function GET(request: NextRequest) {
     }
     
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? parseInt(limitParam, 10) : 10;
     const status = searchParams.get('status');
+    
+    if (Number.isNaN(limit) || limit < 1) {
+      return NextResponse.json({ error: 'Invalid limit parameter' }, { status: 400 });
+    }
     
     // Build where clause
     const where: Record<string, unknown> = {};

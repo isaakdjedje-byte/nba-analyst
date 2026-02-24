@@ -107,7 +107,14 @@ export async function verifyUserMFAToken(
     return { success: false, error: "MFA not configured for user" };
   }
 
-  const backupCodes = JSON.parse(user.mfaBackupCodes || "[]");
+  let backupCodes: string[] = [];
+  try {
+    backupCodes = JSON.parse(user.mfaBackupCodes || "[]");
+    if (!Array.isArray(backupCodes)) backupCodes = [];
+  } catch {
+    return { success: false, error: "Invalid backup codes format" };
+  }
+  
   const result = await verifyMFAToken(user.mfaSecret, backupCodes, token);
 
   if (result.success) {

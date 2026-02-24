@@ -68,8 +68,12 @@ export class OddsRealtimeProvider {
 
   constructor(cache: RedisCache) {
     this.cache = cache;
+    const apiKey = process.env.THE_ODDS_API_KEY;
+    if (!apiKey) {
+      throw new Error('THE_ODDS_API_KEY environment variable is required');
+    }
     this.config = {
-      apiKey: process.env.THE_ODDS_API_KEY || '8b930b318df066da353304ff5167ad77',
+      apiKey,
       baseUrl: 'https://api.the-odds-api.com/v4',
       sport: 'basketball_nba',
       regions: 'us',
