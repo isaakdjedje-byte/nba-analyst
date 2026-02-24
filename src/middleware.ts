@@ -39,6 +39,7 @@ export default withAuth(
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
     );
     response.headers.set("X-Request-Id", traceId);
+    response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
     // RBAC Check - Defense in Depth
     const accessCheck = await checkRouteAccess(req);
