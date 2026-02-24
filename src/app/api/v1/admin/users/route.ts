@@ -25,8 +25,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(req.url);
     const roleParam = searchParams.get("role");
     const search = searchParams.get("search") ?? undefined;
-    const limit = parseInt(searchParams.get("limit") ?? "50", 10);
-    const offset = parseInt(searchParams.get("offset") ?? "0", 10);
+    const limitRaw = searchParams.get("limit");
+    const offsetRaw = searchParams.get("offset");
+    
+    const limit = limitRaw ? Math.max(1, Math.min(100, parseInt(limitRaw, 10))) : 50;
+    const offset = offsetRaw ? Math.max(0, parseInt(offsetRaw, 10)) : 0;
+    
+    if (Number.isNaN(limit) || Number.isNaN(offset)) {
+      return NextResponse.json({ error: 'Invalid pagination parameters' }, { status: 400 });
+    }
     
     // Validate role parameter
     const validRoles = Object.values(UserRole);

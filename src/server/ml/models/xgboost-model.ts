@@ -554,7 +554,12 @@ export class XGBoostModel {
    * Deserialize from JSON
    */
   deserialize(json: string): void {
-    this.setState(JSON.parse(json));
+    try {
+      const state = JSON.parse(json);
+      this.setState(state);
+    } catch (error) {
+      throw new Error(`Failed to deserialize XGBoost model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 
