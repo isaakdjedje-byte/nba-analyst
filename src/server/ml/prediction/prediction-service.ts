@@ -11,6 +11,10 @@ import { FeatureRecord, FeatureValidationResult } from '@/server/ml/features/typ
 import { LogisticRegressionModel, PredictionResult as ModelPredictionResult } from '@/server/ml/models/logistic-regression';
 import { TrainingService, createTrainingService } from '@/server/ml/training/training-service';
 import { Game, BoxScore } from '@/server/ingestion/schema/nba-schemas';
+import { TIME } from '@/lib/constants';
+import pino from 'pino';
+
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // =============================================================================
 // TYPES
@@ -98,10 +102,9 @@ export class PredictionService {
    * Load the active model
    */
   private async loadActiveModel(): Promise<void> {
-    // Check if model is already loaded and fresh (< 1 hour old)
     if (this.currentModel && this.modelLoadedAt) {
       const age = Date.now() - this.modelLoadedAt.getTime();
-      if (age < 60 * 60 * 1000) { // 1 hour
+      if (age < TIME.HOUR_MS) {
         return;
       }
     }
@@ -287,9 +290,8 @@ export class PredictionService {
 
     if (!cached) return null;
 
-    // Check if cache is still fresh (< 1 hour old)
     const age = Date.now() - cached.computedAt.getTime();
-    if (age > 60 * 60 * 1000) return null;
+    if (age > TIME.HOUR_MS) return null;
 
     // Parse features from cache
     const featureRecord = cached.features as unknown as FeatureRecord;
@@ -493,13 +495,13 @@ export class PredictionService {
       if (useCache && !options.forceRefresh) {
         const cached = await this.checkCache(input.gameId.toString());
         if (cached) {
-          console.log(`[${traceId}] Returning cached prediction`);
+          logger.debug({ traceId }, 'Returning cached prediction');
           return cached;
         }
       }
 
       // Step 3: Compute features
-      console.log(`[${traceId}] Computing features for ${input.homeTeamName} vs ${input.awayTeamName}`);
+      logger.debug({ traceId, homeTeam: input.homeTeamName, awayTeam: input.awayTeamName }, 'Computing features');
       const { features, validation } = await this.computeFeatures(input);
 
       if (!validation.valid) {
@@ -517,7 +519,7 @@ export class PredictionService {
       }
 
       // Step 4: Make prediction
-      console.log(`[${traceId}] Making prediction with model ${this.currentModel.version}`);
+      logger.debug({ traceId, modelVersion: this.currentModel.version }, 'Making prediction');
       const prediction = this.currentModel.model.predict(features.modelFeatures);
 
       // Step 5: Format output
