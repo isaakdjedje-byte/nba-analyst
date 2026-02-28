@@ -19,7 +19,7 @@
 
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { AlertCircle, FileText, Filter, ArrowUp, ArrowDown } from 'lucide-react';
 import { LogEntryComponent } from './LogEntry';
@@ -44,6 +44,43 @@ const SORT_OPTIONS: { value: LogSortField; label: string }[] = [
 
 // Session storage key for sort preference (AC5)
 const SESSION_SORT_KEY = 'logs-sort-preference';
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getStartOfCurrentWeek(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  const day = copy.getDay();
+  const diffToMonday = (day + 6) % 7;
+  copy.setDate(copy.getDate() - diffToMonday);
+  return copy;
+}
+
+function getStartOfCurrentMonth(date: Date): Date {
+  const copy = new Date(date);
+  copy.setDate(1);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function getStartOfLastThreeMonths(date: Date): Date {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() - 3);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function getEndOfNextThreeMonths(date: Date): Date {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + 3, 0);
+  copy.setHours(23, 59, 59, 999);
+  return copy;
+}
 
 /**
  * Skeleton for loading state
@@ -135,17 +172,6 @@ export function LogsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Default date range: last 30 days
-  const defaultFromDate = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
-  }, []);
-
-  const defaultToDate = useMemo(() => {
-    return new Date().toISOString().split('T')[0];
-  }, []);
-
   // AC4: Get filter params from URL for bookmarking/sharing
   const fromDateParam = searchParams.get('fromDate');
   const toDateParam = searchParams.get('toDate');
@@ -154,8 +180,9 @@ export function LogsView() {
   const sortOrderParam = searchParams.get('sortOrder') as LogSortOrder | null;
 
   // State
-  const [fromDate, setFromDate] = useState(fromDateParam || defaultFromDate);
-  const [toDate, setToDate] = useState(toDateParam || defaultToDate);
+  // Empty values mean "all seasons" (no date filter).
+  const [fromDate, setFromDate] = useState(fromDateParam || '');
+  const [toDate, setToDate] = useState(toDateParam || '');
   const [status, setStatus] = useState<DecisionStatus | 'all'>(statusParam || 'all');
   const [sortBy, setSortBy] = useState<LogSortField>(sortByParam || 'matchDate');
   const [sortOrder, setSortOrder] = useState<LogSortOrder>(sortOrderParam || 'desc');
@@ -229,6 +256,28 @@ export function LogsView() {
     router.push(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
+  const handlePreset = useCallback((preset: 'week' | 'month' | 'last-3-months' | 'next-3-months') => {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+
+    if (preset === 'week') {
+      handleFilterChange(formatLocalDate(getStartOfCurrentWeek(now)), formatLocalDate(now), status);
+      return;
+    }
+
+    if (preset === 'month') {
+      handleFilterChange(formatLocalDate(getStartOfCurrentMonth(now)), formatLocalDate(now), status);
+      return;
+    }
+
+    if (preset === 'last-3-months') {
+      handleFilterChange(formatLocalDate(getStartOfLastThreeMonths(now)), formatLocalDate(now), status);
+      return;
+    }
+
+    handleFilterChange(formatLocalDate(getStartOfCurrentMonth(now)), formatLocalDate(getEndOfNextThreeMonths(now)), status);
+  }, [handleFilterChange, status]);
+
   // Fetch logs
   const { data, isLoading, isError, error, refetch } = useLogs({
     fromDate,
@@ -272,6 +321,44 @@ export function LogsView() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Date presets aligned with Performance view */}
+          <div className="sm:col-span-2 lg:col-span-4">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Preselection rapide des dates logs">
+              <button
+                type="button"
+                onClick={() => handlePreset('week')}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                data-testid="logs-preset-week"
+              >
+                Semaine actuelle
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePreset('month')}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                data-testid="logs-preset-month"
+              >
+                Mois actuel
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePreset('last-3-months')}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                data-testid="logs-preset-last-3m"
+              >
+                3 derniers mois
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePreset('next-3-months')}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                data-testid="logs-preset-next-3m"
+              >
+                3 prochains mois
+              </button>
+            </div>
+          </div>
+
           {/* From Date */}
           <div>
             <label

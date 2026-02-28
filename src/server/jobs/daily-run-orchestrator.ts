@@ -31,6 +31,9 @@ import { processDailyRun, DailyRunJobConfig } from '@/jobs/daily-run-job';
 import { createFingerprintsFromIngestion } from '@/server/audit/fingerprint-utils';
 import type { DataSourceFingerprints } from '@/server/audit/types';
 import { getPredictionService, PredictionInput as MLPredictionInput } from '@/server/ml/prediction/prediction-service';
+import { createMonitoringService } from '@/server/ml/monitoring/monitoring-service';
+import { resolvePredictionOutcomes } from '@/server/ml/monitoring/outcome-resolution-service';
+import { applyAdaptiveThresholdsToPolicyConfig } from '@/server/policy/adaptive-thresholds';
 
 export interface PipelineConfig {
   /** Run ID in database */
@@ -63,6 +66,7 @@ export interface PipelineResult {
     totalDuration: number;
   };
   qualityAssessment?: DataQualityAssessment;
+  outcomesResolved?: number;
 }
 
 interface IngestionGameRecord {
@@ -74,6 +78,8 @@ interface IngestionGameRecord {
   awayTeam?: { id?: number; name?: string };
   [key: string]: unknown;
 }
+
+type MonitoringRecorder = ReturnType<typeof createMonitoringService>;
 
 type CreatedPrediction = Awaited<ReturnType<typeof prisma.prediction.create>>;
 
@@ -106,6 +112,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
   let ingestionService: IngestionService | null = null;
   let cacheService: CacheService | null = null;
   let qualityAssessment: DataQualityAssessment | undefined;
+  let outcomesResolved = 0;
   
   try {
     // ============================================
@@ -204,17 +211,26 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
     } else {
       console.log('[Pipeline] Phase 2: ML Inference');
       const mlStart = Date.now();
+
+      const monitoring = createMonitoringService();
       
       // Generate predictions for today's matches
-      // In production, this would call actual ML models
-      // For now, we'll create placeholder predictions
-      
-      predictionsCount = await generatePredictions(runId, runDate, traceId);
+      predictionsCount = await generatePredictions(runId, runDate, traceId, monitoring);
       
       mlInferenceDuration = Date.now() - mlStart;
       
       console.log(`[Pipeline] ML inference completed in ${mlInferenceDuration}ms`);
       console.log(`[Pipeline] Generated ${predictionsCount} predictions`);
+
+      // Resolve outcomes for already completed games to keep monitoring metrics fresh.
+      const outcomeResolution = await resolvePredictionOutcomes(1000);
+      outcomesResolved = outcomeResolution.resolved;
+      if (outcomeResolution.errors > 0) {
+        errors.push(`Outcome resolution errors: ${outcomeResolution.errors}`);
+      }
+      console.log(
+        `[Pipeline] Outcome resolution: resolved=${outcomeResolution.resolved}, skipped=${outcomeResolution.skipped}, errors=${outcomeResolution.errors}`
+      );
     }
     
     // ============================================
@@ -231,7 +247,28 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
       consecutiveLosses: DEFAULT_POLICY_CONFIG.hardStops.consecutiveLosses,
       bankrollPercent: DEFAULT_POLICY_CONFIG.hardStops.bankrollPercent,
       defaultStakeAmount: parseInt(process.env.DEFAULT_STAKE_AMOUNT || '100', 10),
+      dataSourceFingerprints: config.dataSourceFingerprints,
     };
+
+    const adaptivePersistence = await applyAdaptiveThresholdsToPolicyConfig({
+      lookbackDays: 120,
+      actorId: 'system-adaptive-thresholds',
+    });
+
+    if (adaptivePersistence.adaptive.applied && adaptivePersistence.adaptive.overrides) {
+      jobConfig.policyConfigOverrides = adaptivePersistence.adaptive.overrides;
+      const applied = adaptivePersistence.adaptive.overrides;
+      const persistenceStatus = adaptivePersistence.changed
+        ? `persisted (version=${adaptivePersistence.snapshotVersion})`
+        : `not persisted (${adaptivePersistence.reason})`;
+      console.log(
+        `[Pipeline] Adaptive policy thresholds applied: confidence>=${applied.confidence.minThreshold.toFixed(2)}, edge>=${applied.edge.minThreshold.toFixed(2)} (samples=${adaptivePersistence.adaptive.sampleSize}, selected=${adaptivePersistence.adaptive.selectedCount}, precision=${(adaptivePersistence.adaptive.precision * 100).toFixed(1)}%, ${persistenceStatus})`
+      );
+    } else {
+      console.log(
+        `[Pipeline] Adaptive policy thresholds skipped: ${adaptivePersistence.reason} (samples=${adaptivePersistence.adaptive.sampleSize})`
+      );
+    }
     
     let picksCount = 0;
     let noBetCount = 0;
@@ -315,6 +352,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
         totalDuration,
       },
       qualityAssessment,
+      outcomesResolved,
     };
     
   } catch (error) {
@@ -344,6 +382,7 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
         publicationDuration,
         totalDuration,
       },
+      outcomesResolved,
     };
   }
 }
@@ -355,7 +394,12 @@ export async function executeDailyRunPipeline(config: PipelineConfig): Promise<P
  * 2. Generate ML predictions using a simple algorithm (or call external ML service)
  * 3. Store predictions in database for policy evaluation
  */
-async function generatePredictions(runId: string, runDate: Date, traceId: string): Promise<number> {
+async function generatePredictions(
+  runId: string,
+  runDate: Date,
+  traceId: string,
+  monitoring: MonitoringRecorder
+): Promise<number> {
   console.log(`[Pipeline] Generating predictions for ${runDate.toISOString().split('T')[0]}`);
   
   try {
@@ -410,9 +454,7 @@ async function generatePredictions(runId: string, runDate: Date, traceId: string
           continue;
         }
         
-        // Generate ML prediction using a simple algorithm
-        // In production, this would call an actual ML model API
-        const prediction = await generateMLPrediction(game, systemUser.id, runId, traceId);
+        const prediction = await generateMLPrediction(game, systemUser.id, runId, traceId, monitoring);
         
         if (prediction) {
           predictionsCreated++;
@@ -441,30 +483,39 @@ async function generateMLPrediction(
   game: IngestionGameRecord,
   userId: string,
   runId: string,
-  traceId: string
+  traceId: string,
+  monitoring: MonitoringRecorder
 ): Promise<CreatedPrediction | null> {
   const homeTeam = game.homeTeam;
   const awayTeam = game.awayTeam;
   
-  if (!homeTeam || !awayTeam) {
+  if (!homeTeam || !awayTeam || homeTeam.id == null || awayTeam.id == null || !homeTeam.name || !awayTeam.name) {
     console.warn(`[Pipeline] Missing team data for game ${game.id}`);
     return null;
   }
   
+  const parsedGameId = typeof game.id === 'string' ? parseInt(game.id, 10) : game.id;
+  if (!Number.isFinite(parsedGameId)) {
+    console.warn(`[Pipeline] Invalid numeric game id for ${game.id}`);
+    return null;
+  }
+
   try {
     // Use real ML prediction service
     const predictionService = getPredictionService();
+    const inferenceStart = Date.now();
     
     const predictionInput: MLPredictionInput = {
-      gameId: typeof game.id === 'string' ? parseInt(game.id) : game.id,
-      homeTeamId: homeTeam.id || 1,
-      awayTeamId: awayTeam.id || 2,
-      homeTeamName: homeTeam.name || 'Home',
-      awayTeamName: awayTeam.name || 'Away',
+      gameId: parsedGameId,
+      homeTeamId: homeTeam.id,
+      awayTeamId: awayTeam.id,
+      homeTeamName: homeTeam.name,
+      awayTeamName: awayTeam.name,
       scheduledAt: game.date ? new Date(game.date) : new Date(),
     };
     
     const prediction = await predictionService.predict(predictionInput);
+    const latencyMs = Date.now() - inferenceStart;
     
     // Create prediction in database with ML results
     const dbPrediction = await prisma.prediction.create({
@@ -472,13 +523,13 @@ async function generateMLPrediction(
         matchId: game.id?.toString() || `game-${Date.now()}`,
         matchDate: game.date ? new Date(game.date) : new Date(),
         league: game.league || 'nba',
-        homeTeam: homeTeam.name || 'Unknown',
-        awayTeam: awayTeam.name || 'Unknown',
+        homeTeam: homeTeam.name,
+        awayTeam: awayTeam.name,
         winnerPrediction: prediction.prediction.winner,
         scorePrediction: `${prediction.score.predictedHomeScore}-${prediction.score.predictedAwayScore}`,
         overUnderPrediction: prediction.overUnder.line,
         confidence: prediction.prediction.confidence,
-        edge: (prediction.prediction.confidence - 0.5) * 100, // Convert to percentage
+        edge: Math.abs(prediction.prediction.homeWinProbability - 0.5),
         modelVersion: prediction.model.version,
         featuresHash: `features-${prediction.model.featureCount}-${prediction.model.featureQuality.toFixed(2)}`,
         status: 'pending',
@@ -489,70 +540,31 @@ async function generateMLPrediction(
     });
     
     console.log(`[Pipeline] ML Prediction created: ${homeTeam.name} vs ${awayTeam.name} (${prediction.prediction.winner}, ${(prediction.prediction.confidence * 100).toFixed(1)}% confidence, model: ${prediction.model.version})`);
+
+    try {
+      await monitoring.recordPrediction({
+        predictionId: dbPrediction.id,
+        modelVersion: prediction.model.version,
+        algorithm: prediction.model.algorithm,
+        features: {
+          ...prediction.features,
+          featureCount: prediction.model.featureCount,
+          featureQuality: prediction.model.featureQuality,
+        },
+        predictedProbability: prediction.prediction.homeWinProbability,
+        predictedWinner: prediction.prediction.winner,
+        confidence: prediction.prediction.confidence,
+        latencyMs,
+      });
+    } catch (monitoringError) {
+      console.warn(`[Pipeline] Monitoring record failed for prediction ${dbPrediction.id}:`, monitoringError);
+    }
     
     return dbPrediction;
   } catch (error) {
-    // Fallback to baseline if ML model fails
-    console.warn(`[Pipeline] ML prediction failed for ${homeTeam.name} vs ${awayTeam.name}, using baseline:`, error);
-    
-    return generateBaselinePrediction(game, userId, runId, traceId);
-  }
-}
-
-/**
- * Baseline prediction algorithm (fallback when ML model unavailable)
- */
-async function generateBaselinePrediction(
-  game: IngestionGameRecord,
-  userId: string,
-  runId: string,
-  traceId: string
-): Promise<CreatedPrediction | null> {
-  const homeTeam = game.homeTeam;
-  const awayTeam = game.awayTeam;
-  
-  if (!homeTeam || !awayTeam) {
-    console.warn(`[Pipeline] Missing team data for game ${game.id}`);
+    console.warn(`[Pipeline] ML prediction failed for ${homeTeam.name} vs ${awayTeam.name}:`, error);
     return null;
   }
-  
-  // Baseline: home court advantage + minimal variance
-  const homeAdvantage = 0.08;
-  const confidence = Math.min(0.85, Math.max(0.55, 0.65 + homeAdvantage));
-  const winnerPrediction = 'HOME';
-  const edge = (confidence - 0.5) * 100;
-  
-  // Predicted scores
-  const homeScore = 110;
-  const awayScore = 105;
-  const scorePrediction = `${homeScore}-${awayScore}`;
-  const overUnderPrediction = homeScore + awayScore + 0.5;
-  
-  // Create prediction in database
-  const prediction = await prisma.prediction.create({
-    data: {
-      matchId: game.id?.toString() || `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      matchDate: game.date ? new Date(game.date) : new Date(),
-      league: game.league || 'nba',
-      homeTeam: homeTeam.name || 'Unknown',
-      awayTeam: awayTeam.name || 'Unknown',
-      winnerPrediction: winnerPrediction,
-      scorePrediction: scorePrediction,
-      overUnderPrediction: overUnderPrediction,
-      confidence: confidence,
-      edge: edge,
-      modelVersion: 'v0.0.0-baseline',
-      featuresHash: 'baseline-fallback',
-      status: 'pending',
-      userId: userId,
-      runId: runId,
-      traceId: `${traceId}-pred-${game.id}`,
-    },
-  });
-  
-  console.log(`[Pipeline] Baseline Prediction created: ${homeTeam.name} vs ${awayTeam.name} (BASELINE FALLBACK)`);
-  
-  return prediction;
 }
 
 /**

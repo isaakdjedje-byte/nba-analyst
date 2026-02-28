@@ -119,6 +119,38 @@ export interface AuditHistoryResponse {
   };
 }
 
+export interface AdaptivePolicyReportResponse {
+  data: {
+    lookbackDays: number;
+    current: {
+      confidenceMinThreshold: number;
+      edgeMinThreshold: number;
+    };
+    recommendation: {
+      applied: boolean;
+      reason?: string;
+      sampleSize: number;
+      selectedCount: number;
+      precision: number;
+      overrides?: {
+        confidence: { minThreshold: number };
+        edge: { minThreshold: number };
+      };
+    };
+    latestAppliedSnapshot: {
+      id: string;
+      version: number;
+      createdAt: string;
+      createdBy: string;
+      changeReason?: string;
+    } | null;
+  };
+  meta: {
+    traceId: string;
+    timestamp: string;
+  };
+}
+
 // UI State types
 export type PolicyConfigState = 'idle' | 'loading' | 'success' | 'error' | 'degraded' | 'blocked';
 

@@ -19,6 +19,7 @@ import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
 import type { InvestigationResult } from '@/features/investigation/types';
 import { v4 as uuidv4 } from 'uuid';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Generate traceId for response metadata
 function generateTraceId(): string {
@@ -61,24 +62,11 @@ function transformToInvestigationResult(decision: Awaited<ReturnType<typeof getP
       hardStop: decision.hardStopGate,
     },
     hardStopReason: decision.hardStopReason,
-    recommendedPick: decision.recommendedPick,
-    // ML output would come from ML service in a real implementation
-    // Generate dynamic factors based on decision properties
-    mlOutput: decision.confidence ? {
-      confidence: decision.confidence,
-      dominantFactors: decision.edge && decision.edge > 0.6 
-        ? ['historical_performance', 'home_advantage', 'rest_days', 'edge_bet_opportunity']
-        : decision.driftGate
-          ? ['historical_performance', 'home_advantage', 'data_drift_detected']
-          : ['historical_performance', 'home_advantage', 'rest_days'],
-    } : undefined,
-    // Data quality signals based on decision properties
-    dataQuality: [
-      { signal: 'odds_data_completeness', isAnomaly: !decision.publishedAt },
-      { signal: 'prediction_data_age', isAnomaly: false },
-      ...(decision.edge && decision.edge < 0.3 ? [{ signal: 'low_edge_confidence', isAnomaly: true }] : []),
-      ...(decision.driftGate ? [{ signal: 'data_drift_detected', isAnomaly: true }] : []),
-    ],
+    recommendedPick: formatRecommendedPick(
+      decision.recommendedPick,
+      decision.homeTeam,
+      decision.awayTeam
+    ),
   };
 }
 

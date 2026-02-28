@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { TrendingUp, AlertCircle } from 'lucide-react';
 import { MetricCard } from '../components/MetricCard';
@@ -19,11 +19,11 @@ import type { PerformanceMetrics } from '../types';
 // Skeleton component for loading state
 function PerformanceMetricsSkeleton() {
   return (
-    <div 
-      className="grid grid-cols-2 lg:grid-cols-4 gap-4"
-      data-testid="performance-metrics-skeleton"
-    >
-      {[...Array(4)].map((_, i) => (
+      <div 
+        className="grid grid-cols-2 lg:grid-cols-6 gap-4"
+        data-testid="performance-metrics-skeleton"
+      >
+        {[...Array(6)].map((_, i) => (
         <div 
           key={i}
           className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 animate-pulse"
@@ -87,23 +87,13 @@ export function PerformanceView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // Default date range: last 30 days
-  const defaultFromDate = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
-  }, []);
-
-  const defaultToDate = useMemo(() => {
-    return new Date().toISOString().split('T')[0];
-  }, []);
-
   // AC4: Get dates from URL params for bookmarking/sharing
   const fromDateParam = searchParams.get('fromDate');
   const toDateParam = searchParams.get('toDate');
   
-  const [fromDate, setFromDate] = useState(fromDateParam || defaultFromDate);
-  const [toDate, setToDate] = useState(toDateParam || defaultToDate);
+  // Empty values mean "all seasons" (backend resolves effective min/max matchDate).
+  const [fromDate, setFromDate] = useState(fromDateParam || '');
+  const [toDate, setToDate] = useState(toDateParam || '');
 
   // Sync state with URL params on mount
   useEffect(() => {
@@ -152,21 +142,21 @@ export function PerformanceView() {
       )}
 
       {!isLoading && !isError && metrics && metrics.totalDecisions === 0 && (
-        <EmptyPerformanceMetrics fromDate={fromDate} toDate={toDate} />
+        <EmptyPerformanceMetrics fromDate={data?.meta?.fromDate || fromDate} toDate={data?.meta?.toDate || toDate} />
       )}
 
       {!isLoading && !isError && metrics && metrics.totalDecisions > 0 && (
         <div 
-          className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+          className="grid grid-cols-2 lg:grid-cols-6 gap-4"
           role="list"
           aria-label="Métriques de performance"
         >
           <div role="listitem">
             <MetricCard
-              label="Taux de précision"
-              value={metrics.accuracyRate}
-              suffix="%"
-              tooltip="Pourcentage de recommandations de type PICK parmi toutes les décisions"
+              label="Win Rate historique"
+              value={metrics.pickWinRate ?? 'N/A'}
+              suffix={metrics.pickWinRate !== null ? '%' : undefined}
+              tooltip="Taux de réussite sur les prédictions historiques dont le résultat est résolu"
               testId="metric-accuracy"
               variant="success"
             />
@@ -175,7 +165,7 @@ export function PerformanceView() {
             <MetricCard
               label="Picks"
               value={metrics.picksCount}
-              tooltip="Nombre de recommandations de pari validées"
+              tooltip="Nombre de recommandations policy (statut PICK)"
               testId="metric-picks"
             />
           </div>
@@ -197,6 +187,23 @@ export function PerformanceView() {
               variant="error"
             />
           </div>
+          <div role="listitem">
+            <MetricCard
+              label="Predictions resolues"
+              value={metrics.resolvedPicksCount}
+              tooltip="Nombre de prédictions historiques avec issue connue (gagné/perdu)"
+              testId="metric-resolved-picks"
+            />
+          </div>
+          <div role="listitem">
+            <MetricCard
+              label="Predictions en attente"
+              value={metrics.pendingPicksCount}
+              tooltip="Nombre de prédictions historiques encore non résolues"
+              testId="metric-pending-picks"
+              variant="warning"
+            />
+          </div>
         </div>
       )}
 
@@ -206,7 +213,7 @@ export function PerformanceView() {
           className="mt-4 text-sm text-gray-500 dark:text-gray-400"
           data-testid="performance-summary"
         >
-          Total des décisions analysées: <strong>{metrics.totalDecisions}</strong> pour la période du {fromDate} au {toDate}
+          Total des décisions analysées: <strong>{metrics.totalDecisions}</strong> pour la période du {data?.meta?.fromDate || fromDate} au {data?.meta?.toDate || toDate}
         </p>
       )}
     </div>

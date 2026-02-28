@@ -8,7 +8,7 @@
  */
 
 import { prisma } from '@/server/db/client';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 // Type for authenticated B2B client
 export interface B2BClient {
@@ -107,12 +107,5 @@ export function hasScope(client: B2BClient | null, requiredScope: string): boole
  * Generate a new API key (for admin use)
  */
 export function generateApiKey(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let key = 'b2b_'; // Prefix for identification
-  
-  for (let i = 0; i < 32; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  
-  return key;
+  return `b2b_${randomBytes(24).toString('base64url')}`;
 }

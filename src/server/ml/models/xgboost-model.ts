@@ -492,11 +492,12 @@ export class XGBoostModel {
     }
 
     const homeWinProbability = this.sigmoid(logOdds);
-    const confidence = Math.abs(homeWinProbability - 0.5) * 2;
+    const awayWinProbability = 1 - homeWinProbability;
+    const confidence = Math.max(homeWinProbability, awayWinProbability);
 
     return {
       homeWinProbability,
-      awayWinProbability: 1 - homeWinProbability,
+      awayWinProbability,
       confidence,
       predictedWinner: homeWinProbability >= 0.5 ? 'HOME' : 'AWAY',
       featureContributions,

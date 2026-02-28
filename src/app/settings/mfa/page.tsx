@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface MFAStatus {
@@ -15,6 +16,7 @@ export default function MFAManagementPage() {
   const session = useSession();
   const sessionData = session?.data;
   const sessionStatus = session?.status;
+  const router = useRouter();
   
   const [mfaStatus, setMfaStatus] = useState<MFAStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,6 +24,21 @@ export default function MFAManagementPage() {
   const [disableCode, setDisableCode] = useState("");
   const [showDisableForm, setShowDisableForm] = useState(false);
   const [disableSuccess, setDisableSuccess] = useState("");
+  const [sessionTimeoutError, setSessionTimeoutError] = useState("");
+
+  useEffect(() => {
+    if (sessionStatus === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [sessionStatus, router]);
+
+  useEffect(() => {
+    if (sessionStatus !== "loading") return;
+    const timer = setTimeout(() => {
+      setSessionTimeoutError("Session loading timeout. Please refresh and try again.");
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [sessionStatus]);
 
   useEffect(() => {
     if (sessionStatus === "loading" || !sessionData) {
@@ -47,6 +64,19 @@ export default function MFAManagementPage() {
 
   // Guard against undefined session during prerender - must check before any session usage
   if (sessionStatus === "loading" || !sessionData) {
+    if (sessionTimeoutError) {
+      return (
+        <div className="min-h-screen bg-gray-50 py-12">
+          <div className="max-w-2xl mx-auto px-4">
+            <div className="bg-white shadow rounded-lg p-8 text-center">
+              <h2 className="text-lg font-semibold text-red-700 mb-2">Session Error</h2>
+              <p className="text-gray-700">{sessionTimeoutError}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-gray-50 py-12">
         <div className="max-w-2xl mx-auto px-4">

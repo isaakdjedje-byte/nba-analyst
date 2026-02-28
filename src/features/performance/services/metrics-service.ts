@@ -14,6 +14,13 @@ import type { PerformanceMetrics, DateRange } from '../types';
 // Create cache service for performance metrics (5 min TTL)
 const metricsCache = new CacheService(CACHE_TTL.PERFORMANCE_METRICS);
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Calculate performance metrics for a given date range
  * Uses cache-aside pattern: check cache first, fetch if miss, store in cache
@@ -33,6 +40,7 @@ export async function calculatePerformanceMetrics(
   if (dateRange?.fromDate && dateRange?.toDate) {
     fromDate = new Date(dateRange.fromDate);
     toDate = new Date(dateRange.toDate);
+    fromDate.setHours(0, 0, 0, 0);
     // Set to end of day
     toDate.setHours(23, 59, 59, 999);
   } else {
@@ -44,9 +52,9 @@ export async function calculatePerformanceMetrics(
   }
 
   // Generate cache key from date range
-  const fromDateStr = fromDate.toISOString().split('T')[0];
-  const toDateStr = toDate.toISOString().split('T')[0];
-  const cacheKey = performanceKeys.metrics(fromDateStr, toDateStr);
+  const fromDateStr = formatLocalDate(fromDate);
+  const toDateStr = formatLocalDate(toDate);
+  const cacheKey = `${performanceKeys.metrics(fromDateStr, toDateStr)}:v2-all-seasons`;
 
   // Cache-aside pattern: try cache first
   const cachedMetrics = await metricsCache.get<PerformanceMetrics>(cacheKey);
@@ -71,47 +79,85 @@ export async function calculatePerformanceMetrics(
  * @returns PerformanceMetrics
  */
 async function fetchMetricsFromDB(fromDate: Date, toDate: Date): Promise<PerformanceMetrics> {
-  // Query policy decisions within date range
-  const decisions = await prisma.policyDecision.findMany({
-    where: {
-      matchDate: {
-        gte: fromDate,
-        lte: toDate,
-      },
-      publishedAt: {
-        not: null, // Only published decisions count
-      },
+  const decisionWhere = {
+    matchDate: {
+      gte: fromDate,
+      lte: toDate,
     },
+  };
+
+  const predictionWhere = {
+    matchDate: {
+      gte: fromDate,
+      lte: toDate,
+    },
+    winnerPrediction: { not: null as null },
+  };
+
+  const [totalDecisions, groupedByStatus] = await Promise.all([
+    prisma.policyDecision.count({ where: decisionWhere }),
+    prisma.policyDecision.groupBy({
+      by: ['status'],
+      where: decisionWhere,
+      _count: {
+        status: true,
+      },
+    }),
+  ]);
+
+  const decisionPicksCount = groupedByStatus.find((g) => g.status === 'PICK')?._count.status ?? 0;
+  const noBetCount = groupedByStatus.find((g) => g.status === 'NO_BET')?._count.status ?? 0;
+  const hardStopCount = groupedByStatus.find((g) => g.status === 'HARD_STOP')?._count.status ?? 0;
+
+  const pickedPredictions = await prisma.prediction.findMany({
+    where: predictionWhere,
     select: {
       id: true,
-      status: true,
-      confidence: true,
-      homeTeam: true,
-      awayTeam: true,
-      recommendedPick: true,
     },
   });
 
-  const totalDecisions = decisions.length;
-  
-  // Count decisions by status
-  const picksCount = decisions.filter(d => d.status === 'PICK').length;
-  const noBetCount = decisions.filter(d => d.status === 'NO_BET').length;
-  const hardStopCount = decisions.filter(d => d.status === 'HARD_STOP').length;
+  const predictionIds = pickedPredictions.map((row) => row.id);
+  const historicalPredictionsCount = predictionIds.length;
+  const picksCount = decisionPicksCount;
 
-  // Calculate accuracy rate
-  // For simplicity, accuracy = picks / total decisions
-  // In a real system, this would need actual game outcomes
-  const accuracyRate = totalDecisions > 0 
-    ? Math.round((picksCount / totalDecisions) * 100 * 10) / 10 
-    : 0;
+  const [resolvedPicksCount, wonPicksCount] = predictionIds.length > 0
+    ? await Promise.all([
+      prisma.predictionLog.count({
+        where: {
+          predictionId: { in: predictionIds },
+          resolvedAt: { not: null },
+        },
+      }),
+      prisma.predictionLog.count({
+        where: {
+          predictionId: { in: predictionIds },
+          resolvedAt: { not: null },
+          correct: true,
+        },
+      }),
+    ])
+    : [0, 0];
+
+  const pendingPicksCount = Math.max(historicalPredictionsCount - resolvedPicksCount, 0);
+  const pickWinRate = resolvedPicksCount > 0
+    ? Math.round((wonPicksCount / resolvedPicksCount) * 1000) / 10
+    : null;
+
+  const totalInScope = Math.max(totalDecisions, historicalPredictionsCount);
+
+  // Keep existing response field for backward compatibility.
+  const accuracyRate = pickWinRate ?? 0;
 
   return {
     accuracyRate,
+    pickWinRate,
+    resolvedPicksCount,
+    wonPicksCount,
+    pendingPicksCount,
     picksCount,
     noBetCount,
     hardStopCount,
-    totalDecisions,
+    totalDecisions: totalInScope,
   };
 }
 
@@ -144,8 +190,8 @@ export function getDefaultDateRange(): DateRange {
   fromDate.setDate(fromDate.getDate() - 30);
   
   return {
-    fromDate: fromDate.toISOString().split('T')[0],
-    toDate: toDate.toISOString().split('T')[0],
+    fromDate: formatLocalDate(fromDate),
+    toDate: formatLocalDate(toDate),
   };
 }
 

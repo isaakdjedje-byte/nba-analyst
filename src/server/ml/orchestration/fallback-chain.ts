@@ -337,10 +337,18 @@ export function createFallbackChain(
   dataQuality: DataQualityGates,
   logger: Logger
 ): FallbackChain {
+  const primaryModelId = process.env.PRIMARY_MODEL_ID;
+  const secondaryModelId = process.env.SECONDARY_MODEL_ID;
+  const lastValidatedModelId = process.env.LAST_VALIDATED_MODEL_ID;
+
+  if (!primaryModelId || !lastValidatedModelId) {
+    throw new Error('PRIMARY_MODEL_ID and LAST_VALIDATED_MODEL_ID must be configured');
+  }
+
   const config: FallbackChainConfig = {
-    primaryModelId: process.env.PRIMARY_MODEL_ID || 'model-v2',
-    secondaryModelId: process.env.SECONDARY_MODEL_ID || 'model-v1',
-    lastValidatedModelId: process.env.LAST_VALIDATED_MODEL_ID || 'model-baseline',
+    primaryModelId,
+    secondaryModelId,
+    lastValidatedModelId,
     reliabilityThreshold: parseFloat(process.env.RELIABILITY_THRESHOLD || '0.5'),
     fallbackLevels: ['primary', 'secondary', 'last_validated', 'force_no_bet'],
   };

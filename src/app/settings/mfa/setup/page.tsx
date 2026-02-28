@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Image from "next/image";
 
 interface MFASetupData {
@@ -9,7 +10,7 @@ interface MFASetupData {
   uri: string;
 }
 
-export default function MFASetupPage() {
+function MFASetupContent() {
   const [setupData, setSetupData] = useState<MFASetupData | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
@@ -17,10 +18,21 @@ export default function MFASetupPage() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<"setup" | "verify" | "complete">("setup");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { update } = useSession();
+
+  const callbackUrlRaw = searchParams.get("callbackUrl");
+  const callbackUrl =
+    callbackUrlRaw && callbackUrlRaw.startsWith("/") && !callbackUrlRaw.startsWith("//")
+      ? callbackUrlRaw
+      : "/settings/mfa";
 
   useEffect(() => {
     // Fetch MFA setup data
-    fetch("/api/auth/mfa/setup")
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+
+    fetch("/api/auth/mfa/setup", { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -32,9 +44,14 @@ export default function MFASetupPage() {
         setLoading(false);
       })
       .catch(() => {
-        setError("Failed to load MFA setup");
+        setError("Failed to load MFA setup (timeout or network error)");
         setLoading(false);
       });
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, []);
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -53,6 +70,7 @@ export default function MFASetupPage() {
 
       if (response.ok && data.success) {
         setBackupCodes(data.backupCodes || []);
+        await update();
         setStep("complete");
       } else {
         setError(data.message || "Invalid verification code");
@@ -65,7 +83,7 @@ export default function MFASetupPage() {
   };
 
   const handleComplete = () => {
-    router.push("/settings/mfa");
+    router.push(callbackUrl);
   };
 
   if (loading && !setupData) {
@@ -203,7 +221,7 @@ export default function MFASetupPage() {
                   onClick={handleComplete}
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                  Go to MFA Settings
+                  Continue
                 </button>
               </div>
             )}
@@ -211,5 +229,20 @@ export default function MFASetupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MFASetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <MFASetupContent />
+    </Suspense>
   );
 }

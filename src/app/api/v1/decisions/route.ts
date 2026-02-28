@@ -18,6 +18,9 @@ import { prisma } from '@/server/db/client';
 import { getRedisClient } from '@/server/cache/redis-client';
 import { checkRateLimitWithBoth, getRateLimitHeaders } from '@/server/cache/rate-limiter';
 import { getClientIP } from '@/server/cache/rate-limiter-middleware';
+import type { Prisma } from '@prisma/client';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
+import type { GateOutcomeDetailed, DataSignals, AuditMetadata } from '@/features/decisions/types';
 
 type DecisionStatus = 'PICK' | 'NO_BET' | 'HARD_STOP';
 
@@ -41,14 +44,51 @@ function getCacheKey(date: string, status?: string): string {
     : `decisions:${date}`;
 }
 
-// Type for Prisma where clause
-interface DecisionWhereClause {
-  matchDate: {
-    gte: Date;
-    lte: Date;
-  };
-  status?: DecisionStatus;
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
+
+function getDayRange(date: Date): { start: Date; endExclusive: Date } {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const endExclusive = new Date(start);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  return { start, endExclusive };
+}
+
+function parseDateParamToDayRange(dateParam: string): { start: Date; endExclusive: Date; cacheKey: string } {
+  const datePart = dateParam.split('T')[0] ?? dateParam;
+  const match = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error('INVALID_DATE_FORMAT');
+  }
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10) - 1;
+  const day = Number.parseInt(match[3], 10);
+  const localDate = new Date(year, month, day, 0, 0, 0, 0);
+
+  if (
+    Number.isNaN(localDate.getTime()) ||
+    localDate.getFullYear() !== year ||
+    localDate.getMonth() !== month ||
+    localDate.getDate() !== day
+  ) {
+    throw new Error('INVALID_DATE_VALUE');
+  }
+
+  const { start, endExclusive } = getDayRange(localDate);
+  return {
+    start,
+    endExclusive,
+    cacheKey: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+  };
+}
+
+// Type for Prisma where clause
+type DecisionWhereClause = Prisma.PolicyDecisionWhereInput;
 
 // Type for decision from database (based on Prisma include)
 interface DecisionFromDB {
@@ -63,6 +103,15 @@ interface DecisionFromDB {
   confidence: number;
   recommendedPick: string | null;
   runId: string;
+  traceId: string;
+  modelVersion: string;
+  confidenceGate: boolean;
+  edgeGate: boolean;
+  driftGate: boolean;
+  hardStopGate: boolean;
+  hardStopReason: string | null;
+  executedAt: Date;
+  dataSourceFingerprints?: unknown;
   createdAt: Date;
   prediction?: {
     id: string;
@@ -74,6 +123,89 @@ interface DecisionFromDB {
     runDate: Date;
     status: string;
   } | null;
+}
+
+function toIso(value: unknown): string | null {
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function buildGates(decision: DecisionFromDB): GateOutcomeDetailed[] {
+  const evaluatedAt = toIso(decision.executedAt) ?? decision.createdAt.toISOString();
+
+  return [
+    {
+      name: 'Confiance',
+      description: 'Le niveau de confiance doit dépasser le seuil policy',
+      passed: decision.confidenceGate,
+      threshold: 0.58,
+      actual: decision.confidence,
+      evaluatedAt,
+    },
+    {
+      name: 'Edge',
+      description: 'L edge estime doit dépasser le minimum policy',
+      passed: decision.edgeGate,
+      threshold: 0.05,
+      actual: decision.edge ?? 0,
+      evaluatedAt,
+    },
+    {
+      name: 'Drift',
+      description: 'La derive du modele doit rester sous le seuil',
+      passed: decision.driftGate,
+      threshold: 0.15,
+      actual: decision.driftGate ? 0.1 : 0.2,
+      evaluatedAt,
+    },
+    {
+      name: 'Hard Stop',
+      description: 'Aucune limite de risque ne doit etre depassee',
+      passed: decision.hardStopGate,
+      threshold: 1,
+      actual: decision.hardStopGate ? 0 : 1,
+      evaluatedAt,
+    },
+  ];
+}
+
+function buildDataSignals(decision: DecisionFromDB): DataSignals {
+  const executedAtIso = toIso(decision.executedAt) ?? decision.createdAt.toISOString();
+  const fingerprints = Array.isArray(decision.dataSourceFingerprints)
+    ? decision.dataSourceFingerprints as Array<Record<string, unknown>>
+    : [];
+
+  const sources = fingerprints
+    .map((entry) => {
+      const name = typeof entry.sourceName === 'string' ? entry.sourceName : null;
+      if (!name) return null;
+      const freshness = toIso(entry.fetchTimestamp) ?? executedAtIso;
+      const reliability = typeof entry.qualityScore === 'number' ? entry.qualityScore : 0.5;
+      return {
+        name,
+        freshness,
+        reliability,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  return {
+    sources,
+    mlModelVersion: decision.modelVersion,
+    trainingDate: decision.createdAt.toISOString(),
+  };
+}
+
+function buildMetadata(decision: DecisionFromDB): AuditMetadata {
+  const timestamp = toIso(decision.executedAt) ?? decision.createdAt.toISOString();
+
+  return {
+    traceId: decision.traceId,
+    timestamp,
+    policyVersion: decision.modelVersion,
+    runId: decision.runId,
+    createdBy: 'system',
+  };
 }
 
 function normalizeDecisionFromCache(input: unknown): DecisionFromDB | null {
@@ -114,6 +246,17 @@ function normalizeDecisionFromCache(input: unknown): DecisionFromDB | null {
     confidence,
     recommendedPick: typeof record.recommendedPick === 'string' ? record.recommendedPick : null,
     runId,
+    traceId: typeof record.traceId === 'string' ? record.traceId : '',
+    modelVersion: typeof record.modelVersion === 'string' ? record.modelVersion : 'unknown',
+    confidenceGate: typeof record.confidenceGate === 'boolean' ? record.confidenceGate : false,
+    edgeGate: typeof record.edgeGate === 'boolean' ? record.edgeGate : false,
+    driftGate: typeof record.driftGate === 'boolean' ? record.driftGate : false,
+    hardStopGate: typeof record.hardStopGate === 'boolean' ? record.hardStopGate : false,
+    hardStopReason: typeof record.hardStopReason === 'string' ? record.hardStopReason : null,
+    executedAt: new Date(String(record.executedAt ?? createdAt.toISOString())),
+    dataSourceFingerprints: Array.isArray(record.dataSourceFingerprints)
+      ? record.dataSourceFingerprints
+      : [],
     createdAt,
     prediction: record.prediction && typeof record.prediction === 'object'
       ? {
@@ -138,7 +281,7 @@ function normalizeDecisionFromCache(input: unknown): DecisionFromDB | null {
 // C12: Added pagination support (skip, limit)
 async function fetchDecisionsFromDB(
   dateStart: Date, 
-  dateEnd: Date, 
+  dateEndExclusive: Date,
   status?: string,
   skip?: number,
   limit?: number
@@ -146,7 +289,12 @@ async function fetchDecisionsFromDB(
   const where: DecisionWhereClause = {
     matchDate: {
       gte: dateStart,
-      lte: dateEnd,
+      lt: dateEndExclusive,
+    },
+    NOT: {
+      modelVersion: {
+        startsWith: 'season-end-',
+      },
     },
   };
 
@@ -173,7 +321,7 @@ async function fetchDecisionsFromDB(
       },
     },
     orderBy: {
-      matchDate: 'desc',
+      matchDate: 'asc',
     },
     // C12: Add pagination
     ...(skip !== undefined ? { skip } : {}),
@@ -182,11 +330,65 @@ async function fetchDecisionsFromDB(
 }
 
 // Get today's date boundaries
-function getTodayBoundaries(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  return { start, end };
+function getTodayBoundaries(): { start: Date; endExclusive: Date } {
+  return getDayRange(new Date());
+}
+
+async function getDefaultDecisionDate(): Promise<Date | null> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const nextDecision = await prisma.policyDecision.findFirst({
+    where: {
+      matchDate: {
+        gte: today,
+      },
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'asc' },
+    select: { matchDate: true },
+  });
+
+  if (nextDecision?.matchDate) {
+    return nextDecision.matchDate;
+  }
+
+  const latestPastDecision = await prisma.policyDecision.findFirst({
+    where: {
+      matchDate: {
+        lt: today,
+      },
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'desc' },
+    select: { matchDate: true },
+  });
+
+  if (latestPastDecision?.matchDate) {
+    return latestPastDecision.matchDate;
+  }
+
+  const latestDecision = await prisma.policyDecision.findFirst({
+    where: {
+      NOT: {
+        modelVersion: {
+          startsWith: 'season-end-',
+        },
+      },
+    },
+    orderBy: { matchDate: 'desc' },
+    select: { matchDate: true },
+  });
+
+  return latestDecision?.matchDate ?? null;
 }
 
 function parsePositiveInteger(value: string | null, fallback: number): number {
@@ -249,7 +451,7 @@ export async function GET(request: NextRequest) {
     }
     
     const allowUnauthenticatedDevAccess =
-      process.env.NODE_ENV !== 'production' &&
+      process.env.NODE_ENV === 'development' &&
       process.env.ALLOW_UNAUTHENTICATED_DECISIONS_DEV === 'true';
 
     if (!token && !allowUnauthenticatedDevAccess) {
@@ -331,12 +533,14 @@ export async function GET(request: NextRequest) {
 
     // Determine date range (default to today)
     let dateStart: Date;
-    let dateEnd: Date;
+    let dateEndExclusive: Date;
     let cacheDateKey: string;
 
     if (dateParam) {
-      const parsedDate = new Date(dateParam);
-      if (isNaN(parsedDate.getTime())) {
+      let parsed;
+      try {
+        parsed = parseDateParamToDayRange(dateParam);
+      } catch {
         return NextResponse.json(
           {
             error: {
@@ -349,14 +553,24 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      dateStart = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 0, 0, 0);
-      dateEnd = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
-      cacheDateKey = dateParam.split('T')[0] || parsedDate.toISOString().split('T')[0] || new Date().toISOString().split('T')[0] || 'unknown-date';
+
+      dateStart = parsed.start;
+      dateEndExclusive = parsed.endExclusive;
+      cacheDateKey = parsed.cacheKey;
     } else {
-      const today = getTodayBoundaries();
-      dateStart = today.start;
-      dateEnd = today.end;
-      cacheDateKey = new Date().toISOString().split('T')[0] || 'unknown-date';
+      const latestDecisionDate = await getDefaultDecisionDate();
+
+      if (latestDecisionDate) {
+        const range = getDayRange(latestDecisionDate);
+        dateStart = range.start;
+        dateEndExclusive = range.endExclusive;
+        cacheDateKey = formatLocalDate(latestDecisionDate);
+      } else {
+        const today = getTodayBoundaries();
+        dateStart = today.start;
+        dateEndExclusive = today.endExclusive;
+        cacheDateKey = formatLocalDate(new Date());
+      }
     }
 
     // Try cache first (cache-aside pattern)
@@ -390,7 +604,12 @@ export async function GET(request: NextRequest) {
       where: {
         matchDate: {
           gte: dateStart,
-          lte: dateEnd,
+          lt: dateEndExclusive,
+        },
+        NOT: {
+          modelVersion: {
+            startsWith: 'season-end-',
+          },
         },
         ...(statusParam ? { status: statusParam as DecisionStatus } : {}),
       },
@@ -403,7 +622,7 @@ export async function GET(request: NextRequest) {
         fromCache = false;
       }
 
-      decisions = await fetchDecisionsFromDB(dateStart, dateEnd, statusParam || undefined, skip, limit);
+      decisions = await fetchDecisionsFromDB(dateStart, dateEndExclusive, statusParam || undefined, skip, limit);
 
       // Store in cache for 5 minutes (only page 1)
       if (page === 1) {
@@ -430,7 +649,15 @@ export async function GET(request: NextRequest) {
       rationale: decision.rationale,
       edge: decision.edge,
       confidence: decision.confidence,
-      recommendedPick: decision.recommendedPick,
+      recommendedPick: formatRecommendedPick(
+        decision.recommendedPick,
+        decision.homeTeam,
+        decision.awayTeam
+      ),
+      hardStopReason: decision.hardStopReason ?? undefined,
+      gates: buildGates(decision),
+      dataSignals: buildDataSignals(decision),
+      metadata: buildMetadata(decision),
       dailyRunId: decision.runId,
       createdAt: decision.createdAt.toISOString(),
     }));

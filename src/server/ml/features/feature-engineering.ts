@@ -50,8 +50,16 @@ export class FeatureEngineeringService {
     const matchDate = new Date(game.date);
 
     // Compute team features
-    const homeFeatures = await this.computeTeamFeatures(homeTeamId, homeBoxScores);
-    const awayFeatures = await this.computeTeamFeatures(awayTeamId, awayBoxScores);
+    const homeFeatures = await this.computeTeamFeatures(homeTeamId, homeBoxScores, {
+      name: game.homeTeam.name,
+      abbreviation: game.homeTeam.abbreviation,
+      conference: game.homeTeam.conference,
+    });
+    const awayFeatures = await this.computeTeamFeatures(awayTeamId, awayBoxScores, {
+      name: game.awayTeam.name,
+      abbreviation: game.awayTeam.abbreviation,
+      conference: game.awayTeam.conference,
+    });
 
     // Compute matchup features
     const matchupFeatures = this.computeMatchupFeatures(h2hGames, homeTeamId, awayTeamId);
@@ -90,11 +98,16 @@ export class FeatureEngineeringService {
    */
   private async computeTeamFeatures(
     teamId: number,
-    boxScores: BoxScore[]
+    boxScores: BoxScore[],
+    teamMeta: {
+      name: string;
+      abbreviation: string;
+      conference: 'East' | 'West';
+    }
   ): Promise<TeamFeatures> {
-    const teamName = `Team-${teamId}`; // Simplified - in production fetch from cache/DB
-    const abbreviation = 'UNK';
-    const conference = 'East' as 'East' | 'West'; // Simplified
+    const teamName = teamMeta.name;
+    const abbreviation = teamMeta.abbreviation;
+    const conference = teamMeta.conference;
 
     // Season stats (all games in window)
     const seasonStats = this.computeSeasonStats(boxScores, teamId);
@@ -118,7 +131,7 @@ export class FeatureEngineeringService {
       games: seasonStats.games,
       wins: seasonStats.wins,
       losses: seasonStats.losses,
-      winRate: seasonStats.games > 0 ? seasonStats.wins / seasonStats.games : 0.5,
+      winRate: seasonStats.games > 0 ? seasonStats.wins / seasonStats.games : 0,
       
       // Offensive stats (season average)
       pointsScoredAvg: seasonStats.avgPointsScored,
@@ -198,16 +211,16 @@ export class FeatureEngineeringService {
       games,
       wins,
       losses,
-      avgPointsScored: games > 0 ? totalPointsScored / games : 110,
-      avgPointsAllowed: games > 0 ? totalPointsAllowed / games : 110,
-      avgFgPct: games > 0 ? totalFgPct / games : 0.45,
-      avg3pPct: games > 0 ? total3pPct / games : 0.35,
-      avgFtPct: games > 0 ? totalFtPct / games : 0.75,
-      avgAssists: games > 0 ? totalAssists / games : 25,
-      avgRebounds: games > 0 ? totalRebounds / games : 45,
-      avgSteals: games > 0 ? totalSteals / games : 7,
-      avgBlocks: games > 0 ? totalBlocks / games : 5,
-      avgTurnovers: games > 0 ? totalTurnovers / games : 14,
+      avgPointsScored: games > 0 ? totalPointsScored / games : 0,
+      avgPointsAllowed: games > 0 ? totalPointsAllowed / games : 0,
+      avgFgPct: games > 0 ? totalFgPct / games : 0,
+      avg3pPct: games > 0 ? total3pPct / games : 0,
+      avgFtPct: games > 0 ? totalFtPct / games : 0,
+      avgAssists: games > 0 ? totalAssists / games : 0,
+      avgRebounds: games > 0 ? totalRebounds / games : 0,
+      avgSteals: games > 0 ? totalSteals / games : 0,
+      avgBlocks: games > 0 ? totalBlocks / games : 0,
+      avgTurnovers: games > 0 ? totalTurnovers / games : 0,
     };
   }
 
@@ -239,8 +252,8 @@ export class FeatureEngineeringService {
     
     return {
       winRate: games > 0 ? wins / games : 0.5,
-      avgPointsScored: games > 0 ? totalPointsScored / games : 110,
-      avgPointsAllowed: games > 0 ? totalPointsAllowed / games : 110,
+      avgPointsScored: games > 0 ? totalPointsScored / games : 0,
+      avgPointsAllowed: games > 0 ? totalPointsAllowed / games : 0,
     };
   }
 
@@ -282,12 +295,12 @@ export class FeatureEngineeringService {
     const lastGame = sorted[0];
     
     if (!lastGame) {
-      return { daysSinceLastGame: 3, backToBack: false };
+      return { daysSinceLastGame: 0, backToBack: false };
     }
     
-    // Assume game IDs roughly correspond to chronological order
-    // In production, use actual dates from games
-    const daysSinceLastGame = 2; // Placeholder - compute from actual dates
+    // BoxScore does not expose a reliable game date here.
+    // Return unknown as 0 instead of synthetic rest estimate.
+    const daysSinceLastGame = 0;
     const backToBack = daysSinceLastGame < 1;
     
     return {
@@ -326,17 +339,28 @@ export class FeatureEngineeringService {
     void awayTeamId;
     let homeWins = 0;
     let awayWins = 0;
-    let totalPointDiff = 0; // Positive means home team won by margin
+    let totalPointDiff = 0;
     
     for (const game of h2hGames.slice(0, this.config.h2hWindow)) {
-      // This is simplified - would need actual scores from box scores
-      // For now, assume even split
+      if (typeof game.homeScore !== 'number' || typeof game.awayScore !== 'number') {
+        continue;
+      }
+
+      const homeSideWon = game.homeScore > game.awayScore;
       if (game.homeTeam.id === homeTeamId) {
-        homeWins++;
-        totalPointDiff += 5; // Assume avg 5 point win
+        if (homeSideWon) {
+          homeWins++;
+        } else {
+          awayWins++;
+        }
+        totalPointDiff += game.homeScore - game.awayScore;
       } else {
-        awayWins++;
-        totalPointDiff -= 5;
+        if (homeSideWon) {
+          awayWins++;
+        } else {
+          homeWins++;
+        }
+        totalPointDiff += game.awayScore - game.homeScore;
       }
     }
     

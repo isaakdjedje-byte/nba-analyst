@@ -12,11 +12,12 @@
 import { prisma } from '@/server/db/client';
 import { PolicyEngine, DEFAULT_POLICY_CONFIG } from '@/server/policy/engine';
 import { HardStopTracker, createHardStopTracker } from '@/server/policy/hardstop-tracker';
-import { RunContext } from '@/server/policy/types';
+import { PolicyConfig, RunContext } from '@/server/policy/types';
 import { sendAlert, createHardStopAlert } from '@/server/ingestion/alerting';
 import { v4 as uuidv4 } from 'uuid';
 import { Logger } from 'pino';
 import { Prisma } from '@prisma/client';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 // Fallback chain imports (Story 2.7)
 import {
@@ -29,7 +30,7 @@ import {
 } from '@/server/ml/orchestration';
 
 // Story 4.5: Import data source fingerprints types
-import type { DataSourceFingerprints } from '@/server/audit/types';
+import { DataSourceFingerprintsSchema, type DataSourceFingerprints } from '@/server/audit/types';
 
 interface EvaluatedFallbackResult {
   finalLevel: FallbackLevel;
@@ -56,6 +57,9 @@ export interface DailyRunJobConfig {
   
   // Story 4.5: Data source fingerprints for audit metadata
   dataSourceFingerprints?: DataSourceFingerprints;
+
+  // Optional runtime threshold overrides (adaptive calibration)
+  policyConfigOverrides?: Partial<Pick<PolicyConfig, 'confidence' | 'edge' | 'drift'>>;
 }
 
 export interface DailyRunJobResult {
@@ -74,6 +78,73 @@ export interface DailyRunJobResult {
     fallbackLevels: Record<FallbackLevel, number>;
     qualityAssessments: DataQualityAssessment[];
   };
+}
+
+function sanitizeDataSourceFingerprints(
+  fingerprints?: DataSourceFingerprints
+): Prisma.InputJsonValue | undefined {
+  if (!fingerprints || fingerprints.length === 0) {
+    return undefined;
+  }
+
+  const normalized = fingerprints.map((item) => ({
+    ...item,
+    fetchTimestamp:
+      item.fetchTimestamp instanceof Date ? item.fetchTimestamp.toISOString() : item.fetchTimestamp,
+  }));
+
+  const validation = DataSourceFingerprintsSchema.safeParse(normalized);
+  if (!validation.success) {
+    console.warn('[DailyRunJob] Invalid dataSourceFingerprints payload, skipping persistence');
+    return undefined;
+  }
+
+  return validation.data as unknown as Prisma.InputJsonValue;
+}
+
+function buildPredictionInputs(
+  prediction: {
+    confidence: number;
+    edge: number | null;
+    winnerPrediction: string | null;
+    scorePrediction: string | null;
+    overUnderPrediction: number | null;
+    modelVersion: string;
+    homeTeam: string;
+    awayTeam: string;
+  },
+  predictionLog: {
+    features: Prisma.JsonValue;
+    predictedProbability: number;
+    confidence: number;
+  } | null
+): Prisma.InputJsonValue {
+  const baseInputs: Record<string, unknown> = {
+    modelVersion: prediction.modelVersion,
+    confidence: prediction.confidence,
+    edge: prediction.edge,
+    winnerPrediction: prediction.winnerPrediction,
+    scorePrediction: prediction.scorePrediction,
+    overUnderPrediction: prediction.overUnderPrediction,
+    homeTeam: prediction.homeTeam,
+    awayTeam: prediction.awayTeam,
+  };
+
+  if (!predictionLog) {
+    return baseInputs as Prisma.InputJsonValue;
+  }
+
+  const features =
+    predictionLog.features && typeof predictionLog.features === 'object' && !Array.isArray(predictionLog.features)
+      ? (predictionLog.features as Record<string, unknown>)
+      : {};
+
+  return {
+    ...baseInputs,
+    ...features,
+    predictedProbability: predictionLog.predictedProbability,
+    predictionLogConfidence: predictionLog.confidence,
+  } as Prisma.InputJsonValue;
 }
 
 /**
@@ -126,35 +197,76 @@ export async function processDailyRun(
     minCompleteness: 0.8,
   }, logger);
 
-  // Create mock model registry for fallback chain
-  const mockModelRegistry = {
-    getModel: async (modelId: string) => {
-      const models: Record<string, { id: string; name: string; version: string }> = {
-        'model-v2': { id: 'model-v2', name: 'Primary Model', version: '2.0' },
-        'model-v1': { id: 'model-v1', name: 'Secondary Model', version: '1.0' },
-        'model-baseline': { id: 'model-baseline', name: 'Baseline Model', version: '1.0' },
-      };
-      return models[modelId] || null;
+  const availableModels = await prisma.mLModel.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: 'desc' },
+    take: 3,
+    select: {
+      id: true,
+      version: true,
+      algorithm: true,
     },
-    listModels: async () => [
-      { id: 'model-v2', name: 'Primary Model', version: '2.0' },
-      { id: 'model-v1', name: 'Secondary Model', version: '1.0' },
-      { id: 'model-baseline', name: 'Baseline Model', version: '1.0' },
-    ],
+  });
+
+  const fallbackModels = availableModels.length > 0
+    ? availableModels
+    : await prisma.mLModel.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: {
+        id: true,
+        version: true,
+        algorithm: true,
+      },
+    });
+
+  const modelRegistry = {
+    getModel: async (modelId: string) => {
+      const model = await prisma.mLModel.findUnique({
+        where: { id: modelId },
+        select: { id: true, version: true, algorithm: true },
+      });
+      if (!model) return null;
+      return {
+        id: model.id,
+        name: model.algorithm,
+        version: model.version,
+      };
+    },
+    listModels: async () => {
+      const models = await prisma.mLModel.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { id: true, version: true, algorithm: true },
+      });
+      return models.map((model) => ({
+        id: model.id,
+        name: model.algorithm,
+        version: model.version,
+      }));
+    },
   };
 
   // Create fallback chain
+  const primaryModel = fallbackModels[0];
+  const secondaryModel = fallbackModels[1] ?? fallbackModels[0];
+  const lastValidatedModel = fallbackModels[2] ?? fallbackModels[1] ?? fallbackModels[0];
+
+  if (!primaryModel || !secondaryModel || !lastValidatedModel) {
+    throw new Error('No ML model available for fallback chain');
+  }
+
   const fallbackConfig: FallbackChainConfig = {
-    primaryModelId: 'model-v2',
-    secondaryModelId: 'model-v1',
-    lastValidatedModelId: 'model-baseline',
+    primaryModelId: primaryModel.id,
+    secondaryModelId: secondaryModel.id,
+    lastValidatedModelId: lastValidatedModel.id,
     reliabilityThreshold: 0.5,
     fallbackLevels: ['primary', 'secondary', 'last_validated', 'force_no_bet'],
   };
   
   const fallbackChain = new FallbackChain(
     fallbackConfig,
-    mockModelRegistry as unknown as ConstructorParameters<typeof FallbackChain>[1],
+    modelRegistry as unknown as ConstructorParameters<typeof FallbackChain>[1],
     dataQualityGates,
     logger
   );
@@ -214,6 +326,8 @@ export async function processDailyRun(
     where: { runId, status: 'pending' },
     orderBy: { createdAt: 'asc' },
   });
+
+  const fingerprintJson = sanitizeDataSourceFingerprints(config.dataSourceFingerprints);
   
   if (predictions.length === 0) {
     return {
@@ -232,9 +346,32 @@ export async function processDailyRun(
       },
     };
   }
+
+  const predictionLogs = await prisma.predictionLog.findMany({
+    where: {
+      predictionId: {
+        in: predictions.map((prediction) => prediction.id),
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      predictionId: true,
+      features: true,
+      predictedProbability: true,
+      confidence: true,
+    },
+  });
+
+  const latestPredictionLogById = new Map<string, (typeof predictionLogs)[number]>();
+  for (const log of predictionLogs) {
+    if (!latestPredictionLogById.has(log.predictionId)) {
+      latestPredictionLogById.set(log.predictionId, log);
+    }
+  }
   
   // Initialize policy engine
   const policyEngine = PolicyEngine.create({
+    ...config.policyConfigOverrides,
     hardStops: hardStopConfig,
   });
   
@@ -285,7 +422,8 @@ export async function processDailyRun(
         predictions.slice(predictions.indexOf(prediction)),
         runId,
         hardStopReason,
-        tracker
+        tracker,
+        config.dataSourceFingerprints
       );
       
       hardStopCount = predictions.length - picksCount - noBetCount;
@@ -380,9 +518,17 @@ export async function processDailyRun(
           confidence: prediction.confidence,
           edge: prediction.edge,
           modelVersion: prediction.modelVersion,
-          recommendedPick: prediction.winnerPrediction,
+          recommendedPick: formatRecommendedPick(
+            prediction.winnerPrediction,
+            prediction.homeTeam,
+            prediction.awayTeam
+          ),
+          predictionInputs: buildPredictionInputs(
+            prediction,
+            latestPredictionLogById.get(prediction.id) ?? null
+          ),
           // Story 4.5: Add data source fingerprints for audit
-          dataSourceFingerprints: config.dataSourceFingerprints as unknown as Prisma.InputJsonValue,
+          dataSourceFingerprints: fingerprintJson,
         } as Prisma.PolicyDecisionUncheckedCreateInput,
       });
       
@@ -420,16 +566,11 @@ export async function processDailyRun(
         await sendAlert({ enabled: true, console: true }, alert);
       }
       
-      // Update tracker state based on decision
-      // Track stake as exposure for PICK decisions - this is used for daily loss calculation
-      // In production, this would come from user betting preferences
-      // When game results are known, this should be updated with actual loss amount
+      // Update tracker state based on decision.
+      // IMPORTANT: dailyLoss must reflect realized PnL only (after outcomes),
+      // not stake exposure at decision time.
       if (result.status === 'PICK') {
-        const stakeAmount = config.defaultStakeAmount ?? 100; // Default €100 stake
-        await tracker.updateDailyLoss(stakeAmount);
-        
-        // Also update consecutive losses tracking (assuming outcome unknown = pending)
-        // This should be updated when game results are resolved
+        // Outcome is unknown at decision time; only mark pending pick state.
         await tracker.updateAfterDecision('PICK', undefined, config.currentBankroll);
       } else if (result.status === 'NO_BET') {
         await tracker.updateAfterDecision('NO_BET', undefined, config.currentBankroll);
@@ -503,6 +644,7 @@ async function markRemainingAsHardStop(
   dataSourceFingerprints?: DataSourceFingerprints
 ): Promise<void> {
   const recommendedAction = tracker.getRecommendedAction();
+  const fingerprintJson = sanitizeDataSourceFingerprints(dataSourceFingerprints);
   
   for (const prediction of remainingPredictions) {
     try {
@@ -530,8 +672,16 @@ async function markRemainingAsHardStop(
           confidence: prediction.confidence,
           edge: prediction.edge,
           modelVersion: prediction.modelVersion,
+          predictionInputs: {
+            modelVersion: prediction.modelVersion,
+            confidence: prediction.confidence,
+            edge: prediction.edge,
+            homeTeam: prediction.homeTeam,
+            awayTeam: prediction.awayTeam,
+            forcedHardStop: true,
+          } as Prisma.InputJsonValue,
           // Story 4.5: Add data source fingerprints for audit
-          dataSourceFingerprints: dataSourceFingerprints as unknown as Prisma.InputJsonValue,
+          dataSourceFingerprints: fingerprintJson,
         } as Prisma.PolicyDecisionUncheckedCreateInput,
       });
       

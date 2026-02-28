@@ -9,6 +9,7 @@ import { prisma } from '@/server/db/client';
 import { FeatureEngineeringService, createFeatureEngineeringService } from '@/server/ml/features/feature-engineering';
 import { FeatureRecord, FeatureValidationResult } from '@/server/ml/features/types';
 import { LogisticRegressionModel, PredictionResult as ModelPredictionResult } from '@/server/ml/models/logistic-regression';
+import { XGBoostModel, type PredictionResult as XGBoostPredictionResult } from '@/server/ml/models/xgboost-model';
 import { TrainingService, createTrainingService } from '@/server/ml/training/training-service';
 import { Game, BoxScore } from '@/server/ingestion/schema/nba-schemas';
 
@@ -86,7 +87,11 @@ export interface CachedPrediction {
 export class PredictionService {
   private featureService: FeatureEngineeringService;
   private trainingService: TrainingService;
-  private currentModel: { version: string; algorithm: string; model: LogisticRegressionModel } | null = null;
+  private currentModel: {
+    version: string;
+    algorithm: string;
+    model: LogisticRegressionModel | XGBoostModel;
+  } | null = null;
   private modelLoadedAt: Date | null = null;
 
   constructor() {
@@ -106,7 +111,7 @@ export class PredictionService {
       }
     }
 
-    const result = await this.trainingService.loadActiveModel();
+    const result = await this.trainingService.loadActiveModelGeneric();
     
     if (!result) {
       throw new Error('No active model found. Please train and activate a model first.');
@@ -118,6 +123,18 @@ export class PredictionService {
       model: result.model,
     };
     this.modelLoadedAt = new Date();
+  }
+
+  private mapPredictionResult(
+    prediction: ModelPredictionResult | XGBoostPredictionResult
+  ): ModelPredictionResult {
+    return {
+      homeWinProbability: prediction.homeWinProbability,
+      awayWinProbability: prediction.awayWinProbability,
+      confidence: prediction.confidence,
+      predictedWinner: prediction.predictedWinner,
+      featureContributions: prediction.featureContributions,
+    };
   }
 
   /**
@@ -303,7 +320,9 @@ export class PredictionService {
       return null;
     }
 
-    const prediction = this.currentModel.model.predict(featureRecord.modelFeatures);
+    const prediction = this.mapPredictionResult(
+      this.currentModel.model.predict(featureRecord.modelFeatures)
+    );
 
     return this.formatPredictionOutput(
       featureRecord,
@@ -518,7 +537,9 @@ export class PredictionService {
 
       // Step 4: Make prediction
       console.log(`[${traceId}] Making prediction with model ${this.currentModel.version}`);
-      const prediction = this.currentModel.model.predict(features.modelFeatures);
+      const prediction = this.mapPredictionResult(
+        this.currentModel.model.predict(features.modelFeatures)
+      );
 
       // Step 5: Format output
       const output = this.formatPredictionOutput(

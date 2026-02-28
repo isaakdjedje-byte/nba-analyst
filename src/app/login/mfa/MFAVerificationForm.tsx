@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 
 export function MFAVerificationForm() {
   const [code, setCode] = useState("");
@@ -12,6 +12,7 @@ export function MFAVerificationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+  const { update } = useSession();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,11 +29,8 @@ export function MFAVerificationForm() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Update session to mark MFA as verified
-        await signIn("credentials", {
-          redirect: false,
-          callbackUrl,
-        });
+        // Refresh session token claims (mfaVerified/mfaEnabled) after successful MFA step.
+        await update();
 
         // Redirect to the callback URL
         router.push(callbackUrl);
@@ -104,7 +102,7 @@ export function MFAVerificationForm() {
           <div>
             <button
               type="submit"
-              disabled={loading || code.length !== 6}
+              disabled={loading || code.length !== (useBackupCode ? 8 : 6)}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Verifying..." : "Verify"}

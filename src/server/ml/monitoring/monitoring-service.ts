@@ -69,6 +69,24 @@ export interface ModelHealthStatus {
   issues: string[];
 }
 
+export interface LatestModelSummary {
+  version: string;
+  algorithm: string;
+  trainedAt: Date;
+  activatedAt: Date | null;
+  trainingDataStart: Date;
+  trainingDataEnd: Date;
+  numTrainingSamples: number;
+  numTestSamples: number;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
+  logLoss: number;
+  auc: number;
+  calibrationError: number;
+}
+
 export interface MonitoringConfig {
   calibrationCheckInterval: number; // hours
   driftCheckInterval: number;      // hours
@@ -97,6 +115,20 @@ export class MonitoringService {
     this.config = { ...DEFAULT_MONITORING_CONFIG, ...config };
   }
 
+  private toNumber(value: unknown, fallback: number = 0): number {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : fallback;
+    }
+    if (typeof value === 'bigint') {
+      return Number(value);
+    }
+    if (typeof value === 'string') {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    return fallback;
+  }
+
   /**
    * Record a prediction event
    */
@@ -110,31 +142,18 @@ export class MonitoringService {
     confidence: number;
     latencyMs: number;
   }): Promise<void> {
-    await prisma.$executeRaw`
-      INSERT INTO prediction_logs (
-        id,
-        prediction_id,
-        model_version,
-        algorithm,
-        features,
-        predicted_probability,
-        predicted_winner,
-        confidence,
-        latency_ms,
-        created_at
-      ) VALUES (
-        ${`log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`},
-        ${prediction.predictionId},
-        ${prediction.modelVersion},
-        ${prediction.algorithm},
-        ${JSON.stringify(prediction.features)},
-        ${prediction.predictedProbability},
-        ${prediction.predictedWinner},
-        ${prediction.confidence},
-        ${prediction.latencyMs},
-        NOW()
-      )
-    `;
+    await prisma.predictionLog.create({
+      data: {
+        predictionId: prediction.predictionId,
+        modelVersion: prediction.modelVersion,
+        algorithm: prediction.algorithm,
+        features: prediction.features,
+        predictedProbability: prediction.predictedProbability,
+        predictedWinner: prediction.predictedWinner,
+        confidence: prediction.confidence,
+        latencyMs: prediction.latencyMs,
+      },
+    });
   }
 
   /**
@@ -146,16 +165,22 @@ export class MonitoringService {
     homeScore: number,
     awayScore: number
   ): Promise<void> {
-    await prisma.$executeRaw`
-      UPDATE prediction_logs
-      SET 
-        actual_winner = ${actualWinner},
-        home_score = ${homeScore},
-        away_score = ${awayScore},
-        resolved_at = NOW(),
-        correct = (predicted_winner = ${actualWinner})
-      WHERE prediction_id = ${predictionId}
-    `;
+    const existing = await prisma.predictionLog.findFirst({
+      where: { predictionId },
+      orderBy: { createdAt: 'desc' },
+      select: { predictedWinner: true },
+    });
+
+    await prisma.predictionLog.updateMany({
+      where: { predictionId },
+      data: {
+        actualWinner,
+        homeScore,
+        awayScore,
+        resolvedAt: new Date(),
+        correct: existing ? existing.predictedWinner === actualWinner : null,
+      },
+    });
   }
 
   /**
@@ -165,36 +190,61 @@ export class MonitoringService {
     window: 'day' | 'week' | 'month',
     modelVersion?: string
   ): Promise<PredictionMetrics> {
-    const interval = window === 'day' ? '1 day' : window === 'week' ? '7 days' : '30 days';
-    
-    const results = await prisma.$queryRaw<{
-      total: number;
-      resolved: number;
-      correct: number;
-      avg_prob: number;
-      avg_actual: number;
-      high_conf: number;
-      med_conf: number;
-      low_conf: number;
-    }[]>`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(actual_winner) as resolved,
-        SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
-        AVG(predicted_probability) as avg_prob,
-        AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
-        SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as high_conf,
-        SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
-        SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
-      FROM prediction_logs
-      WHERE created_at > NOW() - INTERVAL ${interval}
-        ${modelVersion ? prisma.$queryRaw`AND model_version = ${modelVersion}` : prisma.$queryRaw``}
-    `;
+    const windowDays = window === 'day' ? 1 : window === 'week' ? 7 : 30;
+
+    const results = modelVersion
+      ? await prisma.$queryRaw<{
+          total: number;
+          resolved: number;
+          correct: number;
+          avg_prob: number;
+          avg_actual: number;
+          high_conf: number;
+          med_conf: number;
+          low_conf: number;
+        }[]>`
+          SELECT
+            COUNT(*) as total,
+            COUNT(actual_winner) as resolved,
+            SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
+            AVG(predicted_probability) as avg_prob,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as high_conf,
+            SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
+            SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
+          FROM prediction_logs
+          WHERE created_at > NOW() - (${windowDays} * INTERVAL '1 day')
+            AND model_version = ${modelVersion}
+        `
+      : await prisma.$queryRaw<{
+          total: number;
+          resolved: number;
+          correct: number;
+          avg_prob: number;
+          avg_actual: number;
+          high_conf: number;
+          med_conf: number;
+          low_conf: number;
+        }[]>`
+          SELECT
+            COUNT(*) as total,
+            COUNT(actual_winner) as resolved,
+            SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
+            AVG(predicted_probability) as avg_prob,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as high_conf,
+            SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / COUNT(*) as med_conf,
+            SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / COUNT(*) as low_conf
+          FROM prediction_logs
+          WHERE created_at > NOW() - (${windowDays} * INTERVAL '1 day')
+        `;
 
     const row = results[0];
-    const resolvedCount = row?.resolved ?? 0;
-    const correctCount = row?.correct ?? 0;
-    const totalCount = row?.total ?? 0;
+    const resolvedCount = this.toNumber(row?.resolved, 0);
+    const correctCount = this.toNumber(row?.correct, 0);
+    const totalCount = this.toNumber(row?.total, 0);
+    const avgProb = this.toNumber(row?.avg_prob, 0);
+    const avgActual = this.toNumber(row?.avg_actual, 0);
 
     return {
       date: new Date(),
@@ -206,12 +256,12 @@ export class MonitoringService {
       resolvedCount,
       correctPredictions: correctCount,
       accuracy: resolvedCount > 0 ? correctCount / resolvedCount : 0,
-      avgPredictedProbability: row?.avg_prob ?? 0,
-      avgActualOutcome: row?.avg_actual ?? 0,
-      calibrationError: Math.abs((row?.avg_prob ?? 0) - (row?.avg_actual ?? 0)),
-      highConfidenceRate: row?.high_conf ?? 0,
-      mediumConfidenceRate: row?.med_conf ?? 0,
-      lowConfidenceRate: row?.low_conf ?? 0,
+      avgPredictedProbability: avgProb,
+      avgActualOutcome: avgActual,
+      calibrationError: Math.abs(avgProb - avgActual),
+      highConfidenceRate: this.toNumber(row?.high_conf, 0),
+      mediumConfidenceRate: this.toNumber(row?.med_conf, 0),
+      lowConfidenceRate: this.toNumber(row?.low_conf, 0),
       modelVersion: modelVersion || 'unknown',
       algorithm: 'unknown',
     };
@@ -224,29 +274,46 @@ export class MonitoringService {
     modelVersion?: string,
     numBins: number = 10
   ): Promise<{ bin: number; predicted: number; observed: number; count: number }[]> {
-    const results = await prisma.$queryRaw<{
-      bin: number;
-      avg_pred: number;
-      avg_actual: number;
-      count: number;
-    }[]>`
-      SELECT 
-        FLOOR(predicted_probability * ${numBins}) as bin,
-        AVG(predicted_probability) as avg_pred,
-        AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
-        COUNT(*) as count
-      FROM prediction_logs
-      WHERE actual_winner IS NOT NULL
-        ${modelVersion ? prisma.$queryRaw`AND model_version = ${modelVersion}` : prisma.$queryRaw``}
-      GROUP BY FLOOR(predicted_probability * ${numBins})
-      ORDER BY bin
-    `;
+    const results = modelVersion
+      ? await prisma.$queryRaw<{
+          bin: number;
+          avg_pred: number;
+          avg_actual: number;
+          count: number;
+        }[]>`
+          SELECT
+            FLOOR(predicted_probability * ${numBins}) as bin,
+            AVG(predicted_probability) as avg_pred,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            COUNT(*) as count
+          FROM prediction_logs
+          WHERE actual_winner IS NOT NULL
+            AND model_version = ${modelVersion}
+          GROUP BY 1
+          ORDER BY 1
+        `
+      : await prisma.$queryRaw<{
+          bin: number;
+          avg_pred: number;
+          avg_actual: number;
+          count: number;
+        }[]>`
+          SELECT
+            FLOOR(predicted_probability * ${numBins}) as bin,
+            AVG(predicted_probability) as avg_pred,
+            AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+            COUNT(*) as count
+          FROM prediction_logs
+          WHERE actual_winner IS NOT NULL
+          GROUP BY 1
+          ORDER BY 1
+        `;
 
     return results.map(r => ({
-      bin: r.bin,
-      predicted: r.avg_pred,
-      observed: r.avg_actual,
-      count: r.count,
+      bin: this.toNumber(r.bin, 0),
+      predicted: this.toNumber(r.avg_pred, 0),
+      observed: this.toNumber(r.avg_actual, 0),
+      count: this.toNumber(r.count, 0),
     }));
   }
 
@@ -271,8 +338,8 @@ export class MonitoringService {
       FROM prediction_logs,
         JSONB_EACH_TEXT(features)
       WHERE model_version = ${modelVersion}
-        AND created_at > NOW() - INTERVAL '${baselineWindow} days'
-        AND created_at < NOW() - INTERVAL '${currentWindow} days'
+        AND created_at > NOW() - (${baselineWindow} * INTERVAL '1 day')
+        AND created_at < NOW() - (${currentWindow} * INTERVAL '1 day')
       GROUP BY key
     `;
 
@@ -287,7 +354,7 @@ export class MonitoringService {
       FROM prediction_logs,
         JSONB_EACH_TEXT(features)
       WHERE model_version = ${modelVersion}
-        AND created_at > NOW() - INTERVAL '${currentWindow} days'
+        AND created_at > NOW() - (${currentWindow} * INTERVAL '1 day')
       GROUP BY key
     `;
 
@@ -374,10 +441,10 @@ export class MonitoringService {
     `;
 
     const issues: string[] = [];
-    const predictionsInLastHour = lastHour[0]?.count ?? 0;
-    const avgLatency = lastHour[0]?.avg_latency ?? 0;
-    const errorCount = errors[0]?.error_count ?? 0;
-    const total24h = totalLast24h[0]?.count ?? 0;
+    const predictionsInLastHour = this.toNumber(lastHour[0]?.count, 0);
+    const avgLatency = this.toNumber(lastHour[0]?.avg_latency, 0);
+    const errorCount = this.toNumber(errors[0]?.error_count, 0);
+    const total24h = this.toNumber(totalLast24h[0]?.count, 0);
     const errorRate = total24h > 0 ? errorCount / total24h : 0;
 
     if (predictionsInLastHour === 0) {
@@ -442,14 +509,63 @@ export class MonitoringService {
     modelHealth: ModelHealthStatus[];
     drift: FeatureDriftReport | null;
     calibration: { bin: number; predicted: number; observed: number; count: number }[];
+    latestModel: LatestModelSummary | null;
   }> {
-    // Get last 7 days of metrics
-    const dailyMetrics: PredictionMetrics[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      // Would query for specific date
-    }
+    // Get last 7 days of metrics from prediction logs
+    const dailyRows = await prisma.$queryRaw<{
+      day: Date;
+      total: number;
+      resolved: number;
+      correct: number;
+      avg_prob: number | null;
+      avg_actual: number | null;
+      high_conf: number | null;
+      med_conf: number | null;
+      low_conf: number | null;
+    }[]>`
+      SELECT
+        DATE(created_at) as day,
+        COUNT(*)::int as total,
+        COUNT(actual_winner)::int as resolved,
+        SUM(CASE WHEN correct THEN 1 ELSE 0 END)::int as correct,
+        AVG(predicted_probability) as avg_prob,
+        AVG(CASE WHEN actual_winner = 'HOME' THEN 1 ELSE 0 END) as avg_actual,
+        SUM(CASE WHEN confidence > 0.7 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0)::float as high_conf,
+        SUM(CASE WHEN confidence BETWEEN 0.55 AND 0.7 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0)::float as med_conf,
+        SUM(CASE WHEN confidence < 0.55 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0)::float as low_conf
+      FROM prediction_logs
+      WHERE created_at > NOW() - INTERVAL '7 days'
+      GROUP BY DATE(created_at)
+      ORDER BY day ASC
+    `;
+
+    const dailyMetrics: PredictionMetrics[] = dailyRows.map((row) => {
+      const resolved = this.toNumber(row.resolved, 0);
+      const correct = this.toNumber(row.correct, 0);
+      const total = this.toNumber(row.total, 0);
+      const avgProb = this.toNumber(row.avg_prob, 0);
+      const avgActual = this.toNumber(row.avg_actual, 0);
+
+      return {
+        date: row.day,
+        window: 'day',
+        totalPredictions: total,
+        pickCount: total,
+        noBetCount: 0,
+        hardStopCount: 0,
+        resolvedCount: resolved,
+        correctPredictions: correct,
+        accuracy: resolved > 0 ? correct / resolved : 0,
+        avgPredictedProbability: avgProb,
+        avgActualOutcome: avgActual,
+        calibrationError: Math.abs(avgProb - avgActual),
+        highConfidenceRate: this.toNumber(row.high_conf, 0),
+        mediumConfidenceRate: this.toNumber(row.med_conf, 0),
+        lowConfidenceRate: this.toNumber(row.low_conf, 0),
+        modelVersion: 'mixed',
+        algorithm: 'mixed',
+      };
+    });
 
     // Get active models health
     const activeModels = await prisma.$queryRaw<{ model_version: string }[]>`
@@ -481,11 +597,38 @@ export class MonitoringService {
     // Get calibration data
     const calibration = await this.getCalibrationData();
 
+    // Get active model summary
+    const activeModel = await prisma.mLModel.findFirst({
+      where: { isActive: true },
+      orderBy: { activatedAt: 'desc' },
+    });
+
+    const latestModel: LatestModelSummary | null = activeModel
+      ? {
+          version: activeModel.version,
+          algorithm: activeModel.algorithm,
+          trainedAt: activeModel.createdAt,
+          activatedAt: activeModel.activatedAt,
+          trainingDataStart: activeModel.trainingDataStart,
+          trainingDataEnd: activeModel.trainingDataEnd,
+          numTrainingSamples: activeModel.numTrainingSamples,
+          numTestSamples: activeModel.numTestSamples,
+          accuracy: activeModel.accuracy,
+          precision: activeModel.precision,
+          recall: activeModel.recall,
+          f1Score: activeModel.f1Score,
+          logLoss: activeModel.logLoss,
+          auc: activeModel.auc,
+          calibrationError: activeModel.calibrationError,
+        }
+      : null;
+
     return {
       dailyMetrics,
       modelHealth,
       drift,
       calibration,
+      latestModel,
     };
   }
 

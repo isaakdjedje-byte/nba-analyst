@@ -19,17 +19,25 @@ import { generateTraceId } from '@/server/auth/rbac';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import type { AuditMetadataResponse, AuditMetadataResult } from '@/server/audit/types';
+import { DataSourceFingerprintsSchema } from '@/server/audit/types';
+
+function parseDateParam(value?: string): Date | null {
+  if (!value) return null;
+  const asDate = new Date(value);
+  return Number.isNaN(asDate.getTime()) ? null : asDate;
+}
 
 /**
  * Query parameters schema
  */
 const querySchema = z.object({
   traceId: z.string().optional(),
-  fromDate: z.string().datetime().optional(),
-  toDate: z.string().datetime().optional(),
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
   status: z.enum(['PICK', 'NO_BET', 'HARD_STOP']).optional(),
   userId: z.string().optional(),
   source: z.string().optional(),
+  includeSynthetic: z.enum(['true', 'false']).optional().default('false'),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -94,7 +102,20 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
     
-    const { traceId: queryTraceId, fromDate, toDate, status, userId, source, page, limit } = parseResult.data;
+    const { traceId: queryTraceId, fromDate, toDate, status, userId, source, includeSynthetic, page, limit } = parseResult.data;
+
+    const parsedFromDate = parseDateParam(fromDate);
+    const parsedToDate = parseDateParam(toDate);
+
+    if ((fromDate && !parsedFromDate) || (toDate && !parsedToDate)) {
+      return NextResponse.json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid date format for fromDate or toDate',
+        },
+        meta: { traceId, timestamp },
+      }, { status: 400 });
+    }
     
     // Build where clause
     const where: Prisma.PolicyDecisionWhereInput = {};
@@ -103,13 +124,13 @@ export async function GET(request: NextRequest) {
       where.traceId = queryTraceId;
     }
     
-    if (fromDate || toDate) {
+    if (parsedFromDate || parsedToDate) {
       where.executedAt = {};
-      if (fromDate) {
-        where.executedAt.gte = new Date(fromDate);
+      if (parsedFromDate) {
+        where.executedAt.gte = parsedFromDate;
       }
-      if (toDate) {
-        where.executedAt.lte = new Date(toDate);
+      if (parsedToDate) {
+        where.executedAt.lte = parsedToDate;
       }
     }
     
@@ -130,6 +151,16 @@ export async function GET(request: NextRequest) {
         array_contains: [{ sourceName: source }] as unknown as Prisma.JsonArray,
       } as Prisma.JsonFilter;
     }
+
+    if (includeSynthetic !== 'true') {
+      where.NOT = [
+        {
+          modelVersion: {
+            startsWith: 'season-end-',
+          },
+        },
+      ];
+    }
     
     // Execute query with proper pagination
     const [results, total] = await Promise.all([
@@ -143,20 +174,24 @@ export async function GET(request: NextRequest) {
     ]);
     
     // Transform to audit metadata response
-    const data: AuditMetadataResponse[] = results.map((decision) => ({
-      id: decision.id,
-      traceId: decision.traceId,
-      executedAt: decision.executedAt.toISOString(),
-      modelVersion: decision.modelVersion,
-      dataSourceFingerprints:
-        (decision.dataSourceFingerprints || []) as unknown as AuditMetadataResponse['dataSourceFingerprints'],
-      status: decision.status,
-      matchId: decision.matchId,
-      homeTeam: decision.homeTeam,
-      awayTeam: decision.awayTeam,
-      confidence: decision.confidence,
-      rationale: decision.rationale,
-    }));
+    const data: AuditMetadataResponse[] = results.map((decision) => {
+      const parsedFingerprints = DataSourceFingerprintsSchema.safeParse(decision.dataSourceFingerprints || []);
+      const normalizedFingerprints = parsedFingerprints.success ? parsedFingerprints.data : [];
+
+      return {
+        id: decision.id,
+        traceId: decision.traceId,
+        executedAt: decision.executedAt.toISOString(),
+        modelVersion: decision.modelVersion,
+        dataSourceFingerprints: normalizedFingerprints as unknown as AuditMetadataResponse['dataSourceFingerprints'],
+        status: decision.status,
+        matchId: decision.matchId,
+        homeTeam: decision.homeTeam,
+        awayTeam: decision.awayTeam,
+        confidence: decision.confidence,
+        rationale: decision.rationale,
+      };
+    });
     
     const response: AuditMetadataResult = {
       data,

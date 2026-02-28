@@ -164,6 +164,7 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
 
   // Get games from database
   let games: any[] = [];
+  const allowSyntheticBenchmark = process.argv.includes('--allow-synthetic-benchmark');
   try {
     games = await prisma.$queryRaw`
       SELECT 
@@ -183,12 +184,18 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
       LIMIT ${numGames}
     `;
   } catch (e) {
-    console.log('Database query failed, using sample data...');
+    if (!allowSyntheticBenchmark) {
+      throw new Error(`Database query failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    console.log('Database query failed, falling back to synthetic benchmark samples (explicitly allowed).');
   }
 
-  // If no games found, use sample data
+  // If no games found, use synthetic data only when explicitly enabled
   if (!games || games.length === 0) {
-    console.log('No games found in database. Using sample data...');
+    if (!allowSyntheticBenchmark) {
+      throw new Error('No real games found in database for benchmark. Use --allow-synthetic-benchmark to run synthetic mode.');
+    }
+    console.log('No games found in database. Using synthetic benchmark samples (explicitly allowed).');
     return SAMPLE_GAMES;
   }
 
@@ -244,21 +251,38 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
       AND game_date < ${game.date}::date
     `;
 
-    // Use default odds since we don't have odds table
-    const oddsData = { spread: -5, over_under: 220, ml_home: -150, ml_away: 130 };
-    
-    // Convert American odds to probability
-    const mlHomeProb = oddsData.ml_home > 0 
-      ? 100 / (oddsData.ml_home + 100) 
-      : Math.abs(oddsData.ml_home) / (Math.abs(oddsData.ml_home) + 100);
-    const mlAwayProb = oddsData.ml_away > 0 
-      ? 100 / (oddsData.ml_away + 100) 
-      : Math.abs(oddsData.ml_away) / (Math.abs(oddsData.ml_away) + 100);
+    const homePointsAvg = await prisma.$queryRaw`
+      SELECT AVG(home_score)::float as points_avg
+      FROM games
+      WHERE home_team_name = ${game.home_team}
+      AND season = 2023
+      AND game_date < ${game.date}::date
+      AND home_score IS NOT NULL
+    `;
 
+    const awayPointsAvg = await prisma.$queryRaw`
+      SELECT AVG(away_score)::float as points_avg
+      FROM games
+      WHERE away_team_name = ${game.away_team}
+      AND season = 2023
+      AND game_date < ${game.date}::date
+      AND away_score IS NOT NULL
+    `;
+
+    // Use real-data derived proxies when dedicated odds table is unavailable.
     const hForm = ((homeFormData as any[])[0]?.win_rate) || 0.5;
     const aForm = ((awayFormData as any[])[0]?.win_rate) || 0.5;
     const hWinRate = ((homeWinRate as any[])[0]?.win_rate) || 0.5;
     const aWinRate = ((awayWinRate as any[])[0]?.win_rate) || 0.5;
+    const mlHomeProbDerived = Math.max(0.01, Math.min(0.99, hWinRate));
+    const mlAwayProbDerived = Math.max(0.01, Math.min(0.99, aWinRate));
+    const spreadDerived = Number(((hWinRate - aWinRate) * 10).toFixed(2));
+    const homePoints = Number((homePointsAvg as any[])[0]?.points_avg) || 110;
+    const awayPoints = Number((awayPointsAvg as any[])[0]?.points_avg) || 110;
+    const overUnderDerived = Number((homePoints + awayPoints).toFixed(2));
+
+    const mlHomeProb = mlHomeProbDerived;
+    const mlAwayProb = mlAwayProbDerived;
 
     const eloDiff = 0; // No ELO in database, using heuristic
 
@@ -276,8 +300,8 @@ async function extractTestData(numGames: number = 100): Promise<BenchmarkGame[]>
         elo_diff_norm: (eloDiff + 400) / 800,
         home_last10_wins: hForm,
         away_last10_wins: aForm,
-        spread_num: oddsData.spread,
-        over_under: oddsData.over_under,
+        spread_num: spreadDerived,
+        over_under: overUnderDerived,
         ml_home_prob: mlHomeProb,
         ml_away_prob: mlAwayProb,
         rest_days_home: 2,
@@ -396,21 +420,7 @@ async function runPythonPredictions(games: BenchmarkGame[]): Promise<BenchmarkRe
         });
         
       } catch (error) {
-        // Fallback to random prediction on error
-        batch.forEach(game => {
-          const predicted = Math.random() > 0.5 ? 'HOME' : 'AWAY';
-          const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
-          if (isCorrect) correct++;
-          
-          predictions.push({
-            gameId: game.gameId,
-            predicted,
-            actual: game.homeWon ? 'HOME' : 'AWAY',
-            confidence: 0.5,
-            probability: 0.5,
-            latency: 0
-          });
-        });
+        throw new Error(`Python V3 batch prediction failed: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       if ((i + batchSize) % 50 === 0) {
@@ -480,19 +490,7 @@ async function runPythonPredictions(games: BenchmarkGame[]): Promise<BenchmarkRe
         maxLatency = Math.max(maxLatency, latency);
         
       } catch (error) {
-        // Fallback
-        const predicted = Math.random() > 0.5 ? 'HOME' : 'AWAY';
-        const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
-        if (isCorrect) correct++;
-        
-        predictions.push({
-          gameId: game.gameId,
-          predicted,
-          actual: game.homeWon ? 'HOME' : 'AWAY',
-          confidence: 0.5,
-          probability: 0.5,
-          latency: 0
-        });
+        throw new Error(`Python V3 subprocess prediction failed for game ${game.gameId}: ${error instanceof Error ? error.message : String(error)}`);
       }
       
       if ((i + 1) % 20 === 0) {
@@ -567,6 +565,10 @@ async function runLogisticRegression(games: BenchmarkGame[]): Promise<BenchmarkR
   });
 
   const model = new LogisticRegressionModel();
+  if (!fallbackModel) {
+    throw new Error('No logistic-regression model available for benchmark');
+  }
+
   if (fallbackModel?.weights && typeof fallbackModel.weights === 'object') {
     try {
       model.setWeights(fallbackModel.weights as any);
@@ -617,23 +619,7 @@ async function runLogisticRegression(games: BenchmarkGame[]): Promise<BenchmarkR
       minLatency = Math.min(minLatency, latency);
       maxLatency = Math.max(maxLatency, latency);
     } catch (e) {
-      // Fallback
-      const predicted = Math.random() > 0.5 ? 'HOME' : 'AWAY';
-      const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
-      if (isCorrect) correct++;
-      
-      predictions.push({
-        gameId: game.gameId,
-        predicted,
-        actual: game.homeWon ? 'HOME' : 'AWAY',
-        confidence: 0.5,
-        probability: 0.5,
-        latency: 0
-      });
-
-      totalLatency += 0;
-      minLatency = Math.min(minLatency, 0);
-      maxLatency = Math.max(maxLatency, 0);
+      throw new Error(`LogisticRegression prediction failed for game ${game.gameId}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -670,11 +656,15 @@ async function runXGBoost(games: BenchmarkGame[]): Promise<BenchmarkResult> {
   let minLatency = Infinity;
   let maxLatency = 0;
 
-  // Try to load trained XGBoost model, otherwise use heuristic
+  // Require trained XGBoost model for truthful benchmarking
   const xgbModel = await prisma.mLModel.findFirst({
     where: { algorithm: 'xgboost' },
     orderBy: { createdAt: 'desc' }
   });
+
+  if (!xgbModel?.weights || typeof xgbModel.weights !== 'object') {
+    throw new Error('No trained XGBoost model available for benchmark');
+  }
 
   const model = new XGBoostModel();
   let hasTrainedModel = false;
@@ -717,9 +707,7 @@ async function runXGBoost(games: BenchmarkGame[]): Promise<BenchmarkResult> {
       prob = result.homeWinProbability;
       predicted = result.predictedWinner;
     } else {
-      // Heuristic fallback
-      prob = game.pythonV3Features.ml_home_prob;
-      predicted = prob > 0.5 ? 'HOME' : 'AWAY';
+      throw new Error('Loaded XGBoost model state is invalid for benchmark');
     }
     const isCorrect = predicted === (game.homeWon ? 'HOME' : 'AWAY');
     
@@ -751,7 +739,7 @@ async function runXGBoost(games: BenchmarkGame[]): Promise<BenchmarkResult> {
   console.log(`   Min/Max: ${minLatency}ms/${maxLatency}ms`);
 
   return {
-    modelName: hasTrainedModel ? 'TypeScript XGBoost (Trained)' : 'TypeScript XGBoost (Heuristic)',
+    modelName: 'TypeScript XGBoost (Trained)',
     option: 'C',
     numPredictions: predictions.length,
     correct,

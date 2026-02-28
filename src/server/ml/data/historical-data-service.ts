@@ -226,7 +226,7 @@ export class HistoricalDataService {
         ${game.id}, ${game.season}, ${game.seasonType}, ${new Date(game.date)}, ${game.status},
         ${game.homeTeam.id}, ${game.homeTeam.name}, ${game.homeTeam.abbreviation}, ${game.homeTeam.conference},
         ${game.awayTeam.id}, ${game.awayTeam.name}, ${game.awayTeam.abbreviation}, ${game.awayTeam.conference},
-        ${game.homeScore || 0}, ${game.awayScore || 0}, ${game.arena || null}, ${game.attendance || null},
+          ${game.homeScore ?? null}, ${game.awayScore ?? null}, ${game.arena || null}, ${game.attendance || null},
         NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET

@@ -7,6 +7,7 @@ import { Suspense } from 'react';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/server/auth/auth-options';
 import { TrendingUp } from 'lucide-react';
+import Link from 'next/link';
 import { EmptyPerformanceState } from '@/components/ui';
 import { PerformanceView } from '@/features/performance/components/PerformanceView';
 
@@ -60,6 +61,21 @@ export default async function PerformancePage() {
       <Suspense fallback={<PerformancePageSkeleton />}>
         <PerformanceView />
       </Suspense>
+
+      {(session.user.role === 'admin' || session.user.role === 'ops') && (
+        <section className="mt-6 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-5 text-white shadow-sm">
+          <h3 className="text-sm uppercase tracking-wide text-slate-300">ML Operations</h3>
+          <p className="mt-2 text-sm text-slate-100">
+            Consulte les resultats de la nouvelle pipeline ML, la calibration, le drift et la sante des modeles actifs.
+          </p>
+          <Link
+            href="/admin/ml"
+            className="mt-4 inline-flex items-center rounded-md border border-white/30 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20"
+          >
+            Ouvrir ML Monitoring
+          </Link>
+        </section>
+      )}
     </div>
   );
 }

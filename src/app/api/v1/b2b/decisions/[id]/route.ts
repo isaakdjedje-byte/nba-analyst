@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
 import { withB2BAuth, requireScope } from '../../_base';
 import { validateDecisionLookup } from '../../schemas';
+import { formatRecommendedPick } from '@/server/policy/recommended-pick';
 
 /**
  * Transform database decision to API response format with predictionInputs
@@ -62,7 +63,11 @@ function transformDecisionDetail(decision: {
     metadata: {
       confidence: decision.confidence,
       edge: decision.edge,
-      recommendedPick: decision.recommendedPick,
+      recommendedPick: formatRecommendedPick(
+        decision.recommendedPick,
+        decision.homeTeam,
+        decision.awayTeam
+      ),
       modelVersion: decision.modelVersion,
       processedAt: decision.createdAt.toISOString(),
     },

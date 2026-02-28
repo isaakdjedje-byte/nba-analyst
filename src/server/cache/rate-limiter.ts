@@ -108,8 +108,20 @@ export async function checkRateLimit(
   ip: string | undefined,
   config: RateLimitConfig = DEFAULT_RATE_LIMIT
 ): Promise<RateLimitResult> {
-  // If Redis is not configured, allow all requests in development
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // If Redis is not configured, fail closed in production.
   if (!isRedisConfigured()) {
+    if (isProduction) {
+      return {
+        success: false,
+        limit: config.maxRequests,
+        remaining: 0,
+        resetTime: Date.now() + config.windowMs,
+        retryAfter: Math.ceil(config.windowMs / 1000),
+      };
+    }
+
     return {
       success: true,
       limit: config.maxRequests,
@@ -159,7 +171,17 @@ export async function checkRateLimit(
     };
   } catch (error) {
     console.error('RateLimiter: Error checking rate limit:', error);
-    // On error, allow request (fail-open)
+    if (isProduction) {
+      return {
+        success: false,
+        limit: config.maxRequests,
+        remaining: 0,
+        resetTime: Date.now() + config.windowMs,
+        retryAfter: Math.ceil(config.windowMs / 1000),
+      };
+    }
+
+    // Non-production fallback remains fail-open for local development.
     return {
       success: true,
       limit: config.maxRequests,

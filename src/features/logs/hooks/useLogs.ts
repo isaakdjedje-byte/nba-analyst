@@ -19,6 +19,8 @@ import type {
 } from '../types';
 import type { DecisionStatus } from '@/server/db/repositories/policy-decisions-repository';
 
+const REQUEST_TIMEOUT_MS = 10000;
+
 interface UseLogsOptions {
   fromDate?: string;
   toDate?: string;
@@ -48,7 +50,22 @@ async function fetchLogs(
   if (page) params.set('page', String(page));
   if (limit) params.set('limit', String(limit));
 
-  const response = await fetch(`/api/v1/logs?${params.toString()}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`/api/v1/logs?${params.toString()}`, {
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('La requete logs a expire. Veuillez reessayer.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

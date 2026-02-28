@@ -7,6 +7,36 @@ import {
   createForbiddenResponse,
 } from "@/server/auth/rbac";
 
+function buildCspValue(): string {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (!isProduction) {
+    return [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self' https: http: ws: wss:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ");
+  }
+
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
 // Define protected routes matcher
 export const config = {
   matcher: [
@@ -15,8 +45,10 @@ export const config = {
     "/api/v1/decisions/:path*",
     "/api/v1/decisions",
     "/api/v1/admin/:path*",
+    "/api/v1/runs/:path*",
     "/api/v1/admin/users",
     "/api/v1/admin/users/:path*",
+    "/api/ingestion/:path*",
     "/decision/:path*",
     "/policy/:path*",
   ],
@@ -34,10 +66,7 @@ export default withAuth(
     response.headers.set("X-Frame-Options", "DENY");
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    response.headers.set(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
-    );
+    response.headers.set("Content-Security-Policy", buildCspValue());
     response.headers.set("X-Request-Id", traceId);
     response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
@@ -56,8 +85,21 @@ export default withAuth(
         timestamp: new Date().toISOString(),
       });
 
-      // Return 403 Forbidden with trace ID
-      return createForbiddenResponse(traceId);
+      const isApiRoute = pathname.startsWith("/api/");
+
+      if (isApiRoute) {
+        return createForbiddenResponse(traceId);
+      }
+
+      if (accessCheck.error === "Authentication required") {
+        const loginUrl = new URL("/login", req.url);
+        loginUrl.searchParams.set("callbackUrl", pathname);
+        return NextResponse.redirect(loginUrl);
+      }
+
+      const forbiddenUrl = new URL("/dashboard/picks", req.url);
+      forbiddenUrl.searchParams.set("error", "forbidden");
+      return NextResponse.redirect(forbiddenUrl);
     }
 
     // MFA Check for sensitive routes

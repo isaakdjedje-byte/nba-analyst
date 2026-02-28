@@ -7,15 +7,17 @@
  * Subtask 1.4: Add scheduler health check endpoint
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSchedulerHealth, getSchedulerConfig } from '@/server/jobs/scheduler';
+import { requireOps } from '@/server/auth/server-rbac';
 
 // GET /api/v1/runs/health - Get scheduler health
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Check authentication - allow public access for monitoring
-    // In production, you might want to add auth here too
-    // const session = await getServerSession(authOptions);
+    const authResult = await requireOps(request);
+    if (authResult.error) {
+      return authResult.error;
+    }
     
     // Get health status
     const health = await getSchedulerHealth();
