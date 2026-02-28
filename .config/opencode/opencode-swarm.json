@@ -1,0 +1,118 @@
+{
+  "agents": {
+    "architect": {
+      "model": "synthetic/hf:nvidia/Kimi-K2.5-NVFP4",
+      "description": "Orchestrator - Auto-compaction, barrier management, beads verification, Git orchestration"
+    },
+    "coder": {
+      "model": "synthetic/hf:nvidia/Kimi-K2.5-NVFP4",
+      "description": "Code implementation with strict file boundaries and Git auto-commit"
+    },
+    "reviewer": {
+      "model": "synthetic/hf:Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "description": "Code review - Focus: security, logic, performance"
+    },
+    "test_engineer": {
+      "model": "synthetic/hf:nvidia/Kimi-K2.5-NVFP4",
+      "description": "Testing and adversarial validation with Git integration"
+    },
+    "critic": {
+      "model": "synthetic/hf:deepseek-ai/DeepSeek-V3.2",
+      "description": "Plan review - Complex reasoning only"
+    },
+    "sme": {
+      "model": "synthetic/hf:moonshotai/Kimi-K2-Thinking",
+      "description": "Domain expertise - ML/Data/Security"
+    },
+    "explorer": {
+      "model": "synthetic/hf:zai-org/GLM-4.7",
+      "description": "Codebase scanning - Fast and stable"
+    },
+    "docs": {
+      "model": "synthetic/hf:MiniMaxAI/MiniMax-M2.1",
+      "description": "Documentation generation"
+    },
+    "designer": {
+      "model": "synthetic/hf:moonshotai/Kimi-K2.5",
+      "description": "UI/UX scaffolding"
+    }
+  },
+  "gates": {
+    "syntax_check": { "enabled": true },
+    "placeholder_scan": { "enabled": true },
+    "sast_scan": { "enabled": true },
+    "quality_budget": { 
+      "enabled": true,
+      "max_complexity_delta": 5,
+      "min_test_to_code_ratio": 0.3
+    }
+  },
+  "guardrails": {
+    "enabled": true,
+    "max_tool_calls": 500,
+    "profiles": {
+      "coder": { "max_tool_calls": 800, "max_duration_minutes": 60 },
+      "architect": { "max_tool_calls": 300 }
+    }
+  },
+  "review_passes": {
+    "always_security_review": true,
+    "security_globs": ["**/*auth*", "**/*crypto*", "**/*session*", "**/*password*", "**/*jwt*", "**/*betting*", "**/*payment*"]
+  },
+  "automation": {
+    "mode": "auto",
+    "continue_until": "bd_ready_empty",
+    "max_iterations": -1,
+    "context_threshold": 0.75
+  },
+  "context_budget": {
+    "enabled": true,
+    "max_tokens": 60000,
+    "compaction_strategy": "aggressive",
+    "compaction_trigger": "context_threshold",
+    "preserve_state": ["bd_ready", "current_epic", "task_progress", "file_boundaries", "git_status"]
+  },
+  "parallelization": {
+    "enabled": true,
+    "strategy": "barrier",
+    "max_parallel": 4,
+    "barrier_timeout": 3600,
+    "phases": ["coding", "review", "testing"],
+    "file_boundaries": {
+      "coder_1": {"paths": ["src/auth/*", "src/middleware/*"], "forbidden": ["src/api/*", "src/components/*", "src/lib/*", "src/app/*"]},
+      "coder_2": {"paths": ["src/api/*", "src/lib/api/*"], "forbidden": ["src/auth/*", "src/components/*", "src/app/*", "src/middleware/*"]},
+      "coder_3": {"paths": ["src/components/*", "src/app/*"], "forbidden": ["src/lib/*", "src/api/*", "src/auth/*"]},
+      "coder_4": {"paths": ["src/lib/*", "src/utils/*", "src/hooks/*"], "forbidden": ["src/components/*", "src/app/*", "src/auth/*"]}
+    }
+  },
+  "retry_policy": {
+    "max_attempts": 5,
+    "escalate_after": 3,
+    "max_total_time_minutes": 30,
+    "continue_on_failure": true,
+    "retry_failed_only": true
+  },
+  "hooks": {
+    "session.compacting": "custom_compaction_handler",
+    "tool.execute.before": "boundary_check_hook",
+    "tool.execute.after": "beads_update_verifier",
+    "agent.failure": "escalate_to_architect"
+  },
+  "optimization": {
+    "kimi_toggle": true,
+    "qwen_max_tokens": 2000,
+    "deepseek_max_reasoning": 4000
+  },
+  "git": {
+    "enabled": true,
+    "auto_commit": true,
+    "auto_push": true,
+    "push_frequency": "every_5_commits",
+    "commit_style": "detailed",
+    "branch_strategy": "feature_branch",
+    "auto_merge": {"enabled": true, "condition": "all_checks_pass", "target_branch": "main"},
+    "ci_integration": {"enabled": true, "provider": "github_actions", "wait_for_checks": true, "checks_timeout_minutes": 30},
+    "repo_setup": {"auto_create_if_missing": true, "default_name": "nba-analyst", "default_private": true, "initialize_with_readme": true}
+  },
+  "output_format": {"structured": true, "self_reporting": true, "include_timing": true}
+}

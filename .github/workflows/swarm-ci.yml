@@ -1,0 +1,32 @@
+name: Swarm CI
+
+on:
+  push:
+    branches: [feature/swarm-nba-automation, main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:coverage
+      - run: npm audit
+      - run: npm run build
+
+  auto-merge:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/feature/swarm-nba-automation'
+    steps:
+      - name: Auto-merge to main
+        uses: pascalgn/automerge-action@v0.15.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_METHOD: squash

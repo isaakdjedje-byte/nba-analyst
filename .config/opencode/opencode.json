@@ -1,0 +1,83 @@
+{
+  "mcp": {
+    "MCP_DOCKER": {
+      "type": "local",
+      "command": [
+        "docker",
+        "mcp",
+        "gateway",
+        "run"
+      ],
+      "enabled": true
+    },
+    "beads": {
+      "type": "local",
+      "command": [
+        "C:/Users/isaac/AppData/Roaming/Python/Python314/Scripts/beads-mcp.exe"
+      ],
+      "enabled": true
+    },
+    "tesseract": {
+      "type": "remote",
+      "url": "http://localhost:7440/mcp",
+      "enabled": true,
+      "timeout": 15000,
+      "oauth": false
+    }
+  },
+  "skills": {
+    "paths": [
+      "~/.config/opencode/skills"
+    ]
+  },
+  "plugin": [
+    "psychmem",
+    "opencode-swarm"
+  ],
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "iflow": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "iFlow",
+      "options": {
+        "baseURL": "https://apis.iflow.cn/v1",
+        "apiKey": "{env:IFLOW_API_KEY}"
+      },
+      "models": {
+        "TBStars2-200B-A13B": {
+          "name": "TBStars2 200B"
+        },
+        "deepseek-v3.2": {
+          "name": "DeepSeek V3.2"
+        }
+      }
+    }
+  },
+  "model": "iflow/deepseek-v3.2",
+  "permissions": {
+    "default": "allow",
+    "read": {
+      "*": "allow",
+      "**/*": "allow"
+    },
+    "write": {
+      "*": "allow",
+      "**/*": "allow"
+    },
+    "execute": {
+      "*": "allow"
+    },
+    "external_directory": {
+      "*": "allow"
+    },
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "read_file": "allow",
+    "write_file": "allow",
+    "bash": "allow",
+    "edit": "allow",
+    "task": "allow",
+    "Teammate": "allow"
+  }
+}
